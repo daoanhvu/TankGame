@@ -20,7 +20,7 @@ import com.nautilus.tankbattle.util.GraphicUtilities;
 
 public class TankGame implements Game {
 	
-	private Bitmap[] tiles;
+	Bitmap[] tiles;
 	private Graphics graphics;
 	private Audio audio;
 	private UserInput userInput;
@@ -45,7 +45,7 @@ public class TankGame implements Game {
 		}catch(IOException ex) {
 			
 		}
-		currentScreen = new BattleScreen(this, p.x, p.y);
+		currentScreen = new BattleScreen(this);
 	}
 	
 	@Override
@@ -87,7 +87,7 @@ public class TankGame implements Game {
 	@Override
 	public void render(Canvas canvas) {
 		currentScreen.update(lastFrameTime);
-		((BattleScreen)currentScreen).drawMap(canvas);
+		//((BattleScreen)currentScreen).drawMap(canvas);
 	}
 
 }

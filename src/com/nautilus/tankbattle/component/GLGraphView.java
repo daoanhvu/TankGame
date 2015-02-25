@@ -2,6 +2,7 @@ package com.nautilus.tankbattle.component;
 
 import java.util.ArrayList;
 
+import com.nautilus.tankbattle.framework.Screen;
 import com.nautilus.tankbattle.game.Camera3D;
 
 import android.content.Context;
@@ -16,7 +17,7 @@ import android.view.ScaleGestureDetector;
 public class GLGraphView extends GLSurfaceView {
 
 	private final float TOUCH_SCALE_FACTOR = 180.0f/320;
-	private Camera3D renderer;
+	private Screen renderer;
 	private float previousX, previousY;
 	
 	GestureDetector mGestureDetector;
@@ -98,7 +99,7 @@ public class GLGraphView extends GLSurfaceView {
 	public void setRenderer(GLSurfaceView.Renderer rd){
 		super.setEGLConfigChooser(8 , 8, 8, 8, 16, 0);
 		super.setRenderer(rd);
-		renderer = (Camera3D)rd;
+		renderer = (Screen)rd;
 	}
 
 	@Override
@@ -135,7 +136,12 @@ public class GLGraphView extends GLSurfaceView {
 	
 	@Override
 	public void onResume() {
-//		renderer.deleteBuffers();
+		super.onResume();
+	}
+	
+	@Override
+	public void onPause() {
+		renderer.dispose();
 		super.onResume();
 	}
 }
