@@ -52,49 +52,29 @@ public class BattleScreen extends Screen implements Pixmap {
 	        "attribute vec4 aColor;                     	\n" +
 	        "attribute vec2 aTexCoord;						\n" +
 	        "varying vec2 vTexCoord;						\n" + 
-	        "void main() {                          \n" +
+	        "void main() {                          		\n" +
 	        "  gl_Position = uMVP * vec4(aPosition, 1.0); 	\n" +
 	        "  vTexCoord = aTexCoord;						\n" +
 	        "}";
 
 	private static final String kFragmentShader =
-	        "precision mediump float;                   \n" +
-	        "uniform sampler2D uTexture; 				\n" +
-	        "varying vec2 vTexCoord;                     	\n" +
-	        "void main() {                              \n" +
-	        "    gl_FragColor = texture2D(uTexture, vTexCoord);                 \n" +
+	        "precision mediump float;                   		\n" +
+	        "uniform sampler2D uTexture; 						\n" +
+	        "varying vec2 vTexCoord;                     		\n" +
+	        "void main() {                              		\n" +
+	        "    gl_FragColor = texture2D(uTexture, vTexCoord); \n" +
 	        "}";
 	
-	private float[] mapVertices = {
-			-1, 1, 0, 	0, 1,
-			0, 1, 0, 	0.5f, 1,
-			1, 1, 0, 	1, 1
-			-1, 0, 0, 	0, 0.5f,
-			0, 0, 0, 	0.5f, 0.5f,
-			1, 0, 0, 	1, 0.5f,
-			-1, -1, 0, 	0, 0,
-			0, -1, 0, 	0.5f, 0,
-			1, -1, 0, 	1, 0
-	};
+	private float[] mapVertices;
 	private final int stride = 20;
-	private short[] mapIndice = {0, 3, 1, 4, 2, 5, 5, 3, 3, 6, 4, 7, 5, 8};
-	
-//	private float[] mapVertices = {
-//			-2, 1, 0, 	0, 1,
-//			2, 1, 0, 	1, 1,
-//			-2, -1, 0, 	0, 0,
-//			2, -1, 0, 	1, 0
-//	};
-//	private final int stride = 20;
-//	private short[] mapIndice = {0, 2, 1, 3 };
-	
+	private short[] mapIndice = {0, 3, 1, 4, 2, 5};
 	
 	private short[][] mapData = 
-		{	{0, 0, 0, 0, 0},
-			{0, 0, 0, 0, 0},
-			{0, 0, 0, 0, 0},
-			{0, 0, 0, 0, 0},
-			{0, 0, 0, 0, 0}
+		{	{0, 0, 0, 0, 0, 0},
+			{0, 0, 0, 0, 0, 0},
+			{0, 0, 0, 0, 0, 0},
+			{0, 0, 0, 0, 0, 0},
+			{0, 0, 0, 0, 0, 0}
 		};
 	private PixmapFormat pixmapFormat;
 	
@@ -138,6 +118,10 @@ public class BattleScreen extends Screen implements Pixmap {
 			GLES20.glDeleteBuffers(2, bufferId, 0);
 			GLES20.glDeleteTextures(1, bufferId, 2);
 		}
+		
+		//test data
+		if(tank != null)
+			tank.dispose();
 	}
 
 	@Override
@@ -245,8 +229,77 @@ public class BattleScreen extends Screen implements Pixmap {
 //        mOrthoMatrix[15] = 1;
 	}
 	
+	short[] buildIndicesForTriangleStrip(int yLength, int xLength) {
+    	// Now build the index data
+    	int numStripsRequired = yLength - 1;
+    	int numDegensRequired = 2 * (numStripsRequired - 1);
+    	int verticesPerStrip = 2 * xLength;
+    	short[] heightMapIndexData = new short[(verticesPerStrip * numStripsRequired) + numDegensRequired];
+    	int offset = 0;
+    	for (int y = 0; y < yLength - 1; y++) {
+    		if (y > 0) {
+    			// Degenerate begin: repeat first vertex
+    			heightMapIndexData[offset++] = (short)(y * yLength);
+    		}
+    		for (int x = 0; x < xLength; x++) {
+    			// One part of the strip
+    			heightMapIndexData[offset++] = (short)((y * yLength) + x);
+    			heightMapIndexData[offset++] = (short)(((y + 1) * yLength) + x);
+    		}
+    		if (y < yLength - 2) {
+    			// Degenerate end: repeat last vertex
+    			heightMapIndexData[offset++] = (short)(((y + 1) * yLength) + (xLength - 1));
+    		}
+    	}
+
+    	short[] result = new short[offset];
+    	System.arraycopy(heightMapIndexData, 0, result, 0, offset);
+    	return result;
+    }
+	
+	private Tank tank;
 	private int[] bufferId = null;
 	private void createMapObject() {
+		int row = 10;
+		int col = 10;
+		mapIndice = buildIndicesForTriangleStrip(row, col);
+		mapVertices = new float[row * col * 5];
+		int l = mapVertices.length / 5;
+		float x, y, absS, absT;
+		float heighestX = 3;
+		float heighestY = 2;
+		float lowestX = -3;
+		float lowestY = -2;
+		
+		float stepX = (heighestX - lowestX)/(col - 1);
+		float stepY = (heighestY - lowestY)/(row - 1);
+		
+		y = heighestY;
+		for(int i=0; i<row; i++) {
+			x = lowestX;
+			for(int j=0; j<col; j++) {
+				mapVertices[(i*col + j) * 5] = x;
+				mapVertices[(i*col + j) * 5 + 1] = y;
+				mapVertices[(i*col + j) * 5 + 2] = 0;
+				x += stepX;
+			}
+			y -= stepY;
+		}
+		
+		//Generate UV for the map
+		//@see: http://paulyg.f2s.com/uv.htm
+		float rangeS = (lowestX - heighestX) * -1; //
+		float offsetS = -lowestX; //0 - lowest
+		float rangeT = (lowestY - heighestY) * -1;
+		float offsetT = -lowestY; //0 - lowest
+		for(int i=0; i<l; i++) {
+			x = mapVertices[i * 5];
+			y = mapVertices[i*5 + 1];
+			absS = x + offsetS;
+			mapVertices[i * 5 + 3] = absS / rangeS;
+			absT = y + offsetT;
+			mapVertices[i * 5 + 4] = absT / rangeT;
+		}
 		
 		Bitmap bmp = GraphicUtilities.buidMap(mapData, ((TankGame)game).tiles);
 		
@@ -275,6 +328,8 @@ public class BattleScreen extends Screen implements Pixmap {
 		GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_TEXTURE);
 		
 		bmp.recycle();
+		
+		tank = new Tank(POSITION_HANDLE, 0);
 	}
 
 	@Override
@@ -313,6 +368,8 @@ public class BattleScreen extends Screen implements Pixmap {
 		GLES20.glDrawElements(GLES20.GL_TRIANGLE_STRIP, mapIndice.length, GLES20.GL_UNSIGNED_SHORT, 0);
 		
 		GLES20.glDisable(GLES20.GL_TEXTURE_2D);
+		
+		tank.render();
 		
 	}
 

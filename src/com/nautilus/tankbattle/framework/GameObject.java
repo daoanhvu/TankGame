@@ -8,5 +8,6 @@ public abstract class GameObject {
 	protected float width;
 	protected float height;
 	
+	public abstract void render();
 	public abstract void dispose();
 }
