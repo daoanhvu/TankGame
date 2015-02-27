@@ -329,7 +329,7 @@ public class BattleScreen extends Screen implements Pixmap {
 		
 		bmp.recycle();
 		
-		tank = new Tank(POSITION_HANDLE, 0);
+		tank = new Tank(game, POSITION_HANDLE, 0, TEXTURE_HANDLE);
 	}
 
 	@Override
@@ -360,17 +360,16 @@ public class BattleScreen extends Screen implements Pixmap {
 	    GLES20.glVertexAttribPointer(TEXTURE_HANDLE, 2, GLES20.GL_FLOAT, false, stride, 12);
 		
 		// Bind the texture
-	    GLES20.glActiveTexture ( GLES20.GL_TEXTURE0 );
-	    GLES20.glBindTexture ( GLES20.GL_TEXTURE_2D, bufferId[2] );
-	    GLES20.glUniform1i ( uSamplerLoc, 0 );
+	    GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+	    GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, bufferId[2]);
+	    GLES20.glUniform1i(uSamplerLoc, 0);
 
 	    GLES20.glBindBuffer(GLES20.GL_ELEMENT_ARRAY_BUFFER, bufferId[1]);
 		GLES20.glDrawElements(GLES20.GL_TRIANGLE_STRIP, mapIndice.length, GLES20.GL_UNSIGNED_SHORT, 0);
 		
 		GLES20.glDisable(GLES20.GL_TEXTURE_2D);
 		
-		tank.render();
+		tank.render(uSamplerLoc);
 		
 	}
-
 }

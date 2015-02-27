@@ -8,5 +8,6 @@ public class TankApplication extends Application {
 	@Override
 	public void onCreate() {
 		super.onCreate();
+		TankApplication.instance = this;
 	}
 }

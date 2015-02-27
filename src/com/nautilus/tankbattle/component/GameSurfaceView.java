@@ -439,7 +439,7 @@ public class GameSurfaceView extends SurfaceView implements SurfaceHolder.Callba
 						Canvas canvas = view.getHolder().lockCanvas();
 						
 						//Render game scene here
-						view.game.render(canvas);
+						//view.game.render(canvas);
 
 						view.getHolder().unlockCanvasAndPost(canvas);
 					}

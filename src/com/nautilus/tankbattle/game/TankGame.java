@@ -12,6 +12,7 @@ import android.graphics.Point;
 import android.view.WindowManager;
 
 import com.nautilus.tankbattle.framework.Audio;
+import com.nautilus.tankbattle.framework.FileIO;
 import com.nautilus.tankbattle.framework.Game;
 import com.nautilus.tankbattle.framework.Graphics;
 import com.nautilus.tankbattle.framework.Screen;
@@ -24,6 +25,7 @@ public class TankGame implements Game {
 	private Graphics graphics;
 	private Audio audio;
 	private UserInput userInput;
+	private FileIO fileIO;
 	private Screen currentScreen;
 	private float lastFrameTime;
 	
@@ -85,9 +87,8 @@ public class TankGame implements Game {
 	}
 
 	@Override
-	public void render(Canvas canvas) {
-		currentScreen.update(lastFrameTime);
-		//((BattleScreen)currentScreen).drawMap(canvas);
+	public FileIO getFileIO() {
+		return fileIO;
 	}
 
 }
