@@ -3,12 +3,14 @@ package com.nautilus.tankbattle.framework;
 import java.io.IOException;
 import java.io.InputStream;
 
+import com.nautilus.tankbattle.TankApplication;
+
 import android.content.Context;
 import android.content.res.AssetManager;
 
 public class FileIO {
-	public InputStream readAsset(String fileName, Context context) {
-		AssetManager assetManager = context.getAssets();
+	public InputStream readAsset(String fileName) {
+		AssetManager assetManager = TankApplication.instance.getAssets();
 		try {
 			InputStream inputStream = assetManager.open(fileName);
 			return inputStream;

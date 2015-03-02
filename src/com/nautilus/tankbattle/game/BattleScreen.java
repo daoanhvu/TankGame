@@ -1,5 +1,9 @@
 package com.nautilus.tankbattle.game;
 
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
 
@@ -9,6 +13,7 @@ import android.opengl.GLUtils;
 import android.opengl.Matrix;
 import android.util.Log;
 
+import com.nautilus.tankbattle.framework.FileIO;
 import com.nautilus.tankbattle.framework.Game;
 import com.nautilus.tankbattle.framework.LightSource;
 import com.nautilus.tankbattle.framework.Pixmap;
@@ -49,7 +54,6 @@ public class BattleScreen extends Screen implements Pixmap {
 	        "precision mediump float;                       \n" +
 	        "uniform mat4 uMVP;                          	\n" +
 	        "attribute vec3 aPosition;                   	\n" +
-	        "attribute vec4 aColor;                     	\n" +
 	        "attribute vec2 aTexCoord;						\n" +
 	        "varying vec2 vTexCoord;						\n" + 
 	        "void main() {                          		\n" +
@@ -81,6 +85,9 @@ public class BattleScreen extends Screen implements Pixmap {
 	//map size in dip
 	private int width;
 	private int height;
+	
+	private float mapWidth;
+	private float mapLength;
 	
 	//number of piece of tile
 	private int mapRow;
@@ -181,7 +188,7 @@ public class BattleScreen extends Screen implements Pixmap {
         Matrix.setIdentityM(mRotationM, 0);
         Matrix.setIdentityM(mModel, 0);
 
-        createMapObject();
+        loadMap();
 	}
 
 	@Override
@@ -259,20 +266,68 @@ public class BattleScreen extends Screen implements Pixmap {
 	
 	private Tank tank;
 	private int[] bufferId = null;
-	private void createMapObject() {
-		int row = 10;
-		int col = 10;
-		mapIndice = buildIndicesForTriangleStrip(row, col);
-		mapVertices = new float[row * col * 5];
+	private void loadMap() {
+		FileIO fileIO = game.getFileIO();
+		InputStream inputStream = fileIO.readAsset("mapData.txt");
+		float stepX, stepY;
+		float x, y;
+		if(inputStream != null) {
+			try{
+				String line;
+				String[] mapValues;
+				InputStreamReader isr = new InputStreamReader(inputStream);
+				BufferedReader br = new BufferedReader(isr);
+				mapWidth = Float.parseFloat(br.readLine());
+				mapLength = Float.parseFloat(br.readLine());
+				
+				mapColumn = Integer.parseInt(br.readLine());
+				mapRow = Integer.parseInt(br.readLine());
+				mapData = new short[mapRow][mapColumn];
+				
+				stepX = mapWidth/mapColumn;
+				stepY = mapLength/mapRow;
+				
+				for(int i=0; i<mapRow; i++) {
+					line = br.readLine();
+					mapValues = line.split(" ");
+					for(int j=0; j<mapColumn; j++) {
+						mapData[i][j] = Short.parseShort(mapValues[j]);
+					}
+				}
+				
+				mapIndice = buildIndicesForTriangleStrip(mapRow, mapColumn);
+				mapVertices = new float[(mapRow+1) * (mapColumn+1) * 5];
+				
+				y = -mapLength/2;
+				for(int i=0; i<=mapRow; i++) {
+					x = -mapWidth/2;
+					for(int j=0; j<=mapColumn; j++) {
+						mapVertices[0] = x;
+						mapVertices[1] = y;
+						mapVertices[2] = 0;
+						
+						mapVertices[3] = y;
+						mapVertices[4] = 0;
+					}
+				}
+				
+				inputStream.close();
+			}catch(Exception ex){
+				Log.e("BattleScreen", ex.getMessage());
+			}
+		}
+		
+		
+		
 		int l = mapVertices.length / 5;
-		float x, y, absS, absT;
+		
 		float heighestX = 3;
 		float heighestY = 2;
 		float lowestX = -3;
 		float lowestY = -2;
 		
-		float stepX = (heighestX - lowestX)/(col - 1);
-		float stepY = (heighestY - lowestY)/(row - 1);
+		stepX = (heighestX - lowestX)/(col - 1);
+		stepY = (heighestY - lowestY)/(row - 1);
 		
 		y = heighestY;
 		for(int i=0; i<row; i++) {
