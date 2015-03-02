@@ -16,6 +16,11 @@ import com.nautilus.tankbattle.framework.Screen;
 import com.nautilus.tankbattle.framework.ShaderLoader;
 import com.nautilus.tankbattle.util.GraphicUtilities;
 
+/**
+ * 
+ * @author Dell
+ * @see http://archive.gamedev.net/archive/reference/articles/article1256.html
+ */
 public class BattleScreen extends Screen implements Pixmap {
 	
 	/** Additional constants. */
