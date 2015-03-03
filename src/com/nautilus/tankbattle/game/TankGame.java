@@ -80,6 +80,9 @@ public class TankGame implements Game {
 			GLES20.glDeleteTextures(15, mTextures, 0);
 			mTextureLoaded = false;
 		}
+		
+		for(int i=0; i<tiles.length; i++)
+			tiles[i].recycle();
 	}
 	
 	@Override

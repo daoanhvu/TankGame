@@ -25,6 +25,7 @@ import com.nautilus.tankbattle.util.GraphicUtilities;
  * 
  * @author Dell
  * @see http://archive.gamedev.net/archive/reference/articles/article1256.html
+ * @see @see: http://paulyg.f2s.com/uv.htm
  */
 public class BattleScreen extends Screen implements Pixmap {
 	
@@ -74,17 +75,10 @@ public class BattleScreen extends Screen implements Pixmap {
 	        "    gl_FragColor = texture2D(uTexture, vTexCoord); \n" +
 	        "}";
 	
-	private float[] mapVertices;
 	private final int stride = 20;
 	private short[] mapIndice = {0, 3, 1, 4, 2, 5};
 	
-	private short[][] mapData = 
-		{	{0, 0, 0, 0, 0, 0},
-			{0, 0, 0, 0, 0, 0},
-			{0, 0, 0, 0, 0, 0},
-			{0, 0, 0, 0, 0, 0},
-			{0, 0, 0, 0, 0, 0}
-		};
+	private Tile[][] tiles;
 	private PixmapFormat pixmapFormat;
 	
 	//map size in dip
@@ -126,9 +120,9 @@ public class BattleScreen extends Screen implements Pixmap {
 
 	@Override
 	public void dispose() {
-		if(bufferId != null) {
-			GLES20.glDeleteBuffers(2, bufferId, 0);
-			GLES20.glDeleteTextures(1, bufferId, 2);
+		if(mapVerticeBufferId != null) {
+			GLES20.glDeleteBuffers(2, mapVerticeBufferId, 0);
+			GLES20.glDeleteTextures(1, mapVerticeBufferId, 2);
 		}
 		
 		//test data
@@ -270,12 +264,13 @@ public class BattleScreen extends Screen implements Pixmap {
     }
 	
 	private Tank tank;
-	private int[] bufferId = null;
+	private int[] mapVerticeBufferId = null;
 	private void loadMap() {
 		FileIO fileIO = game.getFileIO();
 		InputStream inputStream = fileIO.readAsset("mapData.txt");
 		float stepX, stepY;
 		float x, y;
+		int verticeCount, k;
 		if(inputStream != null) {
 			try{
 				String line;
@@ -287,109 +282,110 @@ public class BattleScreen extends Screen implements Pixmap {
 				
 				mapColumn = Integer.parseInt(br.readLine());
 				mapRow = Integer.parseInt(br.readLine());
-				mapData = new short[mapRow][mapColumn];
+				tiles = new Tile[mapRow][mapColumn];
 				
 				stepX = mapWidth/mapColumn;
 				stepY = mapLength/mapRow;
 				
+				verticeCount = mapRow * mapColumn * 4;
+				float[] mapVertices = new float[verticeCount * 5];
+				
+				y = mapLength/2;
+				k = 0;
 				for(int i=0; i<mapRow; i++) {
 					line = br.readLine();
 					mapValues = line.split(" ");
-					for(int j=0; j<mapColumn; j++) {
-						mapData[i][j] = Short.parseShort(mapValues[j]);
-					}
-				}
-				
-				mapIndice = buildIndicesForTriangleStrip(mapRow, mapColumn);
-				mapVertices = new float[(mapRow+1) * (mapColumn+1) * 5];
-				
-				y = -mapLength/2;
-				for(int i=0; i<=mapRow; i++) {
 					x = -mapWidth/2;
-					for(int j=0; j<=mapColumn; j++) {
-						mapVertices[0] = x;
-						mapVertices[1] = y;
-						mapVertices[2] = 0;
+					for(int j=0; j<mapColumn; j++) {
+						tiles[i][j].cellValue = Short.parseShort(mapValues[j]);
 						
-						mapVertices[3] = y;
-						mapVertices[4] = 0;
+						tiles[i][j].vertices[0] = x;
+						tiles[i][j].vertices[1] = y;
+						tiles[i][j].vertices[2] = 0;
+						tiles[i][j].vertices[3] = 0; //s
+						tiles[i][j].vertices[4] = 1; //t
+						mapVertices[k*5] = tiles[i][j].vertices[0];
+						mapVertices[k*5+1] = tiles[i][j].vertices[1];
+						mapVertices[k*5+2] = tiles[i][j].vertices[2];
+						mapVertices[k*5+3] = tiles[i][j].vertices[3];
+						mapVertices[k*5+4] = tiles[i][j].vertices[4];
+						k++;
+						
+						tiles[i][j].vertices[5] = x;
+						tiles[i][j].vertices[6] = y - stepY;
+						tiles[i][j].vertices[7] = 0;
+						tiles[i][j].vertices[8] = 0; //S
+						tiles[i][j].vertices[9] = 0; //T
+						mapVertices[k*5] = tiles[i][j].vertices[5];
+						mapVertices[k*5+1] = tiles[i][j].vertices[6];
+						mapVertices[k*5+2] = tiles[i][j].vertices[7];
+						mapVertices[k*5+3] = tiles[i][j].vertices[8];
+						mapVertices[k*5+4] = tiles[i][j].vertices[9];
+						k++;
+						
+						tiles[i][j].vertices[10] = x + stepX;
+						tiles[i][j].vertices[11] = y - stepY;
+						tiles[i][j].vertices[12] = 0;
+						tiles[i][j].vertices[13] = 1; //S
+						tiles[i][j].vertices[14] = 0; //T
+						mapVertices[k*5] = tiles[i][j].vertices[10];
+						mapVertices[k*5+1] = tiles[i][j].vertices[11];
+						mapVertices[k*5+2] = tiles[i][j].vertices[12];
+						mapVertices[k*5+3] = tiles[i][j].vertices[13];
+						mapVertices[k*5+4] = tiles[i][j].vertices[14];
+						k++;
+						
+						tiles[i][j].vertices[15] = x + stepX;
+						tiles[i][j].vertices[16] = y;
+						tiles[i][j].vertices[17] = 0;
+						tiles[i][j].vertices[18] = 1; //S
+						tiles[i][j].vertices[19] = 1; //T
+						mapVertices[k*5] = tiles[i][j].vertices[15];
+						mapVertices[k*5+1] = tiles[i][j].vertices[16];
+						mapVertices[k*5+2] = tiles[i][j].vertices[17];
+						mapVertices[k*5+3] = tiles[i][j].vertices[18];
+						mapVertices[k*5+4] = tiles[i][j].vertices[19];
+						k++;
+						
+						x += stepX;
 					}
+					
+					y -= stepY;
 				}
 				
+				mapVerticeBufferId = new int[1];
+				GLES20.glGenBuffers(1, mapVerticeBufferId, 0);
+				//init vertex buffer
+				ShaderLoader.initVertexBuffer(GLES20.GL_ARRAY_BUFFER, mapVertices, mapVerticeBufferId[0]);
+				tank = new Tank(game, POSITION_HANDLE, 0, TEXTURE_HANDLE);
 				inputStream.close();
 			}catch(Exception ex){
 				Log.e("BattleScreen", ex.getMessage());
 			}
 		}
+	}
+	
+	private void drawMap() {
+		GLES20.glEnable(GLES20.GL_TEXTURE_2D);
 		
+		GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, mapVerticeBufferId[0]);
+		GLES20.glEnableVertexAttribArray(POSITION_HANDLE);
+		GLES20.glVertexAttribPointer(POSITION_HANDLE, 3, GLES20.GL_FLOAT, false, stride, 0);
 		
+		// Load the texture coordinate
+	    GLES20.glEnableVertexAttribArray(TEXTURE_HANDLE );
+	    GLES20.glVertexAttribPointer(TEXTURE_HANDLE, 2, GLES20.GL_FLOAT, false, stride, 12);
 		
-		int l = mapVertices.length / 5;
+		// Bind the texture
+	    GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+	    GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, mapVerticeBufferId[2]);
+	    GLES20.glUniform1i(uSamplerLoc, 0);
+
+	    GLES20.glBindBuffer(GLES20.GL_ELEMENT_ARRAY_BUFFER, mapVerticeBufferId[1]);
+		GLES20.glDrawElements(GLES20.GL_Q, mapIndice.length, GLES20.GL_UNSIGNED_SHORT, 0);
 		
-		float heighestX = 3;
-		float heighestY = 2;
-		float lowestX = -3;
-		float lowestY = -2;
-		
-		stepX = (heighestX - lowestX)/(col - 1);
-		stepY = (heighestY - lowestY)/(row - 1);
-		
-		y = heighestY;
-		for(int i=0; i<row; i++) {
-			x = lowestX;
-			for(int j=0; j<col; j++) {
-				mapVertices[(i*col + j) * 5] = x;
-				mapVertices[(i*col + j) * 5 + 1] = y;
-				mapVertices[(i*col + j) * 5 + 2] = 0;
-				x += stepX;
-			}
-			y -= stepY;
-		}
-		
-		//Generate UV for the map
-		//@see: http://paulyg.f2s.com/uv.htm
-		float rangeS = (lowestX - heighestX) * -1; //
-		float offsetS = -lowestX; //0 - lowest
-		float rangeT = (lowestY - heighestY) * -1;
-		float offsetT = -lowestY; //0 - lowest
-		for(int i=0; i<l; i++) {
-			x = mapVertices[i * 5];
-			y = mapVertices[i*5 + 1];
-			absS = x + offsetS;
-			mapVertices[i * 5 + 3] = absS / rangeS;
-			absT = y + offsetT;
-			mapVertices[i * 5 + 4] = absT / rangeT;
-		}
-		
-		Bitmap bmp = GraphicUtilities.buidMap(mapData, ((TankGame)game).tiles);
-		
-		bufferId = new int[3];
-		GLES20.glGenBuffers(2, bufferId, 0);
-		
-		//init vertex buffer
-		ShaderLoader.initVertexBuffer(GLES20.GL_ARRAY_BUFFER, mapVertices, bufferId[0]);
-		ShaderLoader.initIndexBuffer(GLES20.GL_ELEMENT_ARRAY_BUFFER, mapIndice, bufferId[1]);
-		
-		//Generate buffer
-		// Use tightly packed data. Do we need this???
-	    GLES20.glPixelStorei ( GLES20.GL_UNPACK_ALIGNMENT, 1 );
-		GLES20.glGenTextures(1, bufferId, 2);
-		GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
-		GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, bufferId[2]);
-		
-		GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bmp, 0);
-		
-		// Set filtering
-		GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
-		GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
-		 
-		// Set wrapping mode
-		GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_TEXTURE);
-		GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_TEXTURE);
-		
-		bmp.recycle();
-		
-		tank = new Tank(game, POSITION_HANDLE, 0, TEXTURE_HANDLE);
+		GLES20.glDisable(GLES20.GL_TEXTURE_2D);
+
 	}
 
 	@Override
@@ -409,27 +405,15 @@ public class BattleScreen extends Screen implements Pixmap {
 		GLES20.glUniformMatrix4fv(uMVPHandle, 1, false, mMVP, 0);
 		GLES20.glUniformMatrix4fv(uModelViewMatrixHandle, 1, false, mModelView, 0);
 				
-		GLES20.glEnable(GLES20.GL_TEXTURE_2D);
-		
-		GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, bufferId[0]);
-		GLES20.glEnableVertexAttribArray(POSITION_HANDLE);
-		GLES20.glVertexAttribPointer(POSITION_HANDLE, 3, GLES20.GL_FLOAT, false, stride, 0);
-		
-		// Load the texture coordinate
-	    GLES20.glEnableVertexAttribArray(TEXTURE_HANDLE );
-	    GLES20.glVertexAttribPointer(TEXTURE_HANDLE, 2, GLES20.GL_FLOAT, false, stride, 12);
-		
-		// Bind the texture
-	    GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
-	    GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, bufferId[2]);
-	    GLES20.glUniform1i(uSamplerLoc, 0);
-
-	    GLES20.glBindBuffer(GLES20.GL_ELEMENT_ARRAY_BUFFER, bufferId[1]);
-		GLES20.glDrawElements(GLES20.GL_TRIANGLE_STRIP, mapIndice.length, GLES20.GL_UNSIGNED_SHORT, 0);
-		
-		GLES20.glDisable(GLES20.GL_TEXTURE_2D);
-		
+		drawMap();		
 		tank.render(uSamplerLoc);
 		
 	}
+}
+
+class Tile {
+	float x, y;
+	float width, height;
+	short cellValue;
+	float[] vertices = new float[20]; // = 4 vertice * 5 component
 }
