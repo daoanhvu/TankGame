@@ -9,6 +9,7 @@ import android.graphics.BitmapFactory;
 import android.graphics.Point;
 import android.opengl.GLES20;
 import android.opengl.GLUtils;
+import android.opengl.Matrix;
 import android.view.WindowManager;
 
 import com.nautilus.tankbattle.TankApplication;
@@ -34,6 +35,12 @@ public class Tank extends GameObject {
 	private final int mPosHandle;
 	private final int mNormalHandle;
 	private final int mTextureHandle;
+	
+	private final float[] mModel = new float[16];
+	private final float[] mRotationM = new float[16];
+	private final float[] mTranslation = new float[16];
+	private boolean moving = false;
+	private boolean rotating = false;
 	
 	/**
 	 * {  }
@@ -189,7 +196,23 @@ public class Tank extends GameObject {
 
 	@Override
 	public void render() {
-		// TODO Auto-generated method stub
+	
+	}
+
+	@Override
+	public void update(float deltaTime) {
+		if(moving) {
+			x += velocityX;
+			y += velocityY;
+			Matrix.translateM(mTranslation, 0, x, velocityY, z);
+		}
 		
+		if(rotating) {
+			x += velocityX;
+			y += velocityY;
+			Matrix.rotateM(mRotationM, 0, 5f, deltaTime, deltaTime, deltaTime);
+		}
+		
+		Matrix.multiplyMM(mModel, 0, mRotationM, 0, mTranslation, 0);
 	}
 }

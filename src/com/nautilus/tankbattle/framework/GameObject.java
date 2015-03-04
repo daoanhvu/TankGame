@@ -10,4 +10,5 @@ public abstract class GameObject {
 	
 	public abstract void render();
 	public abstract void dispose();
+	public abstract void update(float deltaTime);
 }

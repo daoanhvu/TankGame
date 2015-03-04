@@ -13,5 +13,5 @@ public interface Game {
 	public void setScreen(Screen screen);
 	public Screen getCurrentScreen();
 	public Screen getStartScreen();
-	public Bitmap getTile(int index);
+	public Bitmap getTile(int index);	
 }

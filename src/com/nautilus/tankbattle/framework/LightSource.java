@@ -16,4 +16,10 @@ public class LightSource extends GameObject {
 		// TODO Auto-generated method stub
 		
 	}
+
+	@Override
+	public void update(float deltaTime) {
+		// TODO Auto-generated method stub
+		
+	}
 }

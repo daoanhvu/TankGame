@@ -2,7 +2,7 @@ package com.nautilus.tankbattle.framework;
 
 import android.opengl.GLSurfaceView;
 
-public abstract class Screen implements GLSurfaceView.Renderer {
+public abstract class Screen {
 	protected final Game game;
 	
 	public Screen(Game game) {

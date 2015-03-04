@@ -16,4 +16,10 @@ public class Weapon extends GameObject {
 		
 	}
 
+	@Override
+	public void update(float deltaTime) {
+		// TODO Auto-generated method stub
+		
+	}
+
 }
