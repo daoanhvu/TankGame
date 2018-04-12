@@ -52,13 +52,13 @@ public class Game {
         Game game = new Game();
         try {
             Card card = new Card(x, y, w, h, "Vu Dao");
-            Character ch = new Character("Villager", "D:\\projects\\WereWolf\\images\\villager.jpg");
+            Character ch = new Character("Villager", "D:\\projects\\demo\\TankGame\\wereWolf\\images\\villager.jpg");
             card.setCharacter(ch);
             game.addCard(card);
 
             y += w + padding;
             card = new Card(x, y, w, h, "Thai");
-            ch = new Character("Villager", "D:\\projects\\WereWolf\\images\\ww.jpg");
+            ch = new Character("Villager", "D:\\projects\\demo\\TankGame\\wereWolf\\images\\ww.jpg");
             card.setCharacter(ch);
             game.addCard(card);
 //

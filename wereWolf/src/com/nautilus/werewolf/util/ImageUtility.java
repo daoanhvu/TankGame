@@ -2,12 +2,8 @@ package com.nautilus.werewolf.util;
 
 import java.awt.Image;
 import java.awt.Color;
-import java.awt.image.BufferedImage;
-import java.awt.image.ImageFilter;
-import java.awt.image.DataBufferByte;
-import java.awt.image.RGBImageFilter;
-import java.awt.image.ImageProducer;
-import java.awt.image.FilteredImageSource;
+import java.awt.geom.AffineTransform;
+import java.awt.image.*;
 import java.awt.AlphaComposite;
 import java.awt.Graphics2D;
 import java.awt.Toolkit;
@@ -35,6 +31,36 @@ import java.awt.Toolkit;
  */
 
 public final class ImageUtility{
+
+    public static BufferedImage scaleImage(BufferedImage input, double scale) {
+        int h2 = (int) (input.getHeight() * scale);
+        int w2 = (int) (input.getWidth() * scale );
+        BufferedImage output = new BufferedImage(w2, h2, input.getType());
+        AffineTransform affineScale = AffineTransform.getScaleInstance(scale, scale);
+        AffineTransformOp scaleOp = new AffineTransformOp(affineScale, AffineTransformOp.TYPE_BILINEAR);
+        scaleOp.filter(input, output);
+        return output;
+    }
+
+    public static BufferedImage scaleToPreferHeight(BufferedImage input, int preferHeight) {
+        double scale = (preferHeight * 1.0 ) / input.getHeight();
+        int w2 = (int) (input.getWidth() * scale );
+        BufferedImage output = new BufferedImage(w2, preferHeight, input.getType());
+        AffineTransform affineScale = AffineTransform.getScaleInstance(scale, scale);
+        AffineTransformOp scaleOp = new AffineTransformOp(affineScale, AffineTransformOp.TYPE_BILINEAR);
+        scaleOp.filter(input, output);
+        return output;
+    }
+
+    public static BufferedImage scaleToSize(BufferedImage input, int toWidth, int toHeight) {
+        double scaleH = (toHeight * 1.0 ) / input.getHeight();
+        double scaleW = (toWidth * 1.0 ) / input.getWidth();
+        BufferedImage output = new BufferedImage(toWidth, toHeight, input.getType());
+        AffineTransform affineScale = AffineTransform.getScaleInstance(scaleW, scaleH);
+        AffineTransformOp scaleOp = new AffineTransformOp(affineScale, AffineTransformOp.TYPE_BILINEAR);
+        scaleOp.filter(input, output);
+        return output;
+    }
 
     /**
      @usage:
