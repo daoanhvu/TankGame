@@ -2,48 +2,50 @@ package com.nautilus.werewolf.ui;
 
 import com.nautilus.werewolf.game.Game;
 
-import java.awt.Frame;
-import java.awt.BorderLayout;
-import java.awt.MenuItem;
+import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
-import java.awt.MenuBar;
-import java.awt.Menu;
-import java.io.File;
-import java.io.IOException;
 
-import javax.imageio.ImageIO;
+import javax.swing.*;
 
-public class GameMainFrame extends Frame{
+public class GameMainFrame extends JFrame {
 
-    private MenuBar mainMenu;
-    private ToolBar mainToolBar;
-    private Menu mnFile, mnTool, mnHelp;
-    private MenuItem mniQuit, mniOpenCommandPane, mniHelp, mniAbout;
-    private MenuItem mni3ModelLab;
+    private JMenuBar mainMenu;
+    private JToolBar mainToolBar;
+    private JMenu mnFile, mnTool, mnHelp;
+    private JMenuItem mniQuit, mniOpenCommandPane, mniHelp, mniAbout;
+    private JMenuItem mni3ModelLab;
 
-    private StrategyCanvas canvas;
+//    private StrategyCanvas canvas;
+    private GamePanel gamePanel;
     private GameInfoPane infoPane;
+
+    private JPanel pnQuestionPane;
+    private JButton btnNextQuestion;
 
     //TODO: For testing purpose
     private Game game;
 
     public GameMainFrame(){
         super("Nautilus WereWolf 1.0");
-        setLayout(new BorderLayout(5, 5));
+        Container c = getContentPane();
+        c.setLayout(new BorderLayout(5, 5));
+
+//        c.setBounds(0, 0, 800, 600);
+        c.setPreferredSize(new Dimension(1200, 700));
 
         infoPane = new GameInfoPane();
 
         //Menubar
-        mainMenu = new MenuBar();
-        mnFile = new Menu("File");
-        mniQuit = new MenuItem("Quit");
+        mainMenu = new JMenuBar();
+        mnFile = new JMenu("File");
+        mniQuit = new JMenuItem("Quit");
         mniQuit.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                canvas.stop();
+
                 System.exit(0);
 
             }
@@ -51,8 +53,8 @@ public class GameMainFrame extends Frame{
         mnFile.add(mniQuit);
 
         mainMenu.add(mnFile);
-        mnTool = new Menu("Tools");
-        mniOpenCommandPane = new MenuItem("Command Pane");
+        mnTool = new JMenu("Tools");
+        mniOpenCommandPane = new JMenuItem("Command Pane");
         mniOpenCommandPane.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent arg0) {
@@ -62,35 +64,34 @@ public class GameMainFrame extends Frame{
         mnTool.add(mniOpenCommandPane);
 
         mainMenu.add(mnTool);
-        mnHelp = new Menu("Help");
-        mniHelp = new MenuItem("Help");
-        mniAbout = new MenuItem("About");
+        mnHelp = new JMenu("Help");
+        mniHelp = new JMenuItem("Help");
+        mniAbout = new JMenuItem("About");
         mnHelp.add(mniHelp);
         mnHelp.add(mniAbout);
 
         mainMenu.add(mnHelp);
-        setMenuBar(mainMenu);
+        setJMenuBar(mainMenu);
 
         initToolBar();
 
-        canvas = new StrategyCanvas();
+        gamePanel = new GamePanel();
         //canvas = new Lab3DCanvas();
         this.addWindowListener(new WindowAdapter(){
             public void windowClosing(WindowEvent we){
-                canvas.stop();
+
                 System.exit(0);
             }
 
             public void windowOpened(WindowEvent we){
-                canvas.setup();
-                //canvas.broastCastChanged();
+//                canvas.broastCastChanged();
             }
         });
         game = Game.create("");
-        canvas.setGame(game);
+        gamePanel.setGame(game);
 
-        this.add(canvas, BorderLayout.CENTER);
-        this.add(infoPane, BorderLayout.EAST);
+        c.add(gamePanel, BorderLayout.CENTER);
+        c.add(infoPane, BorderLayout.EAST);
 
 //        canvas.setDrawPaneListener(infoPane);
         this.pack();

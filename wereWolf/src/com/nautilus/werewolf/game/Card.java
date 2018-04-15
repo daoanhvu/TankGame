@@ -22,6 +22,11 @@ public class Card {
         alive = true;
     }
 
+    public void moveTo(int _x, int _y) {
+        this.x = _x;
+        this.y = _y;
+    }
+
     public int getX() {
         return x;
     }
@@ -88,5 +93,7 @@ public class Card {
         } else {
 
         }
+
+        g2.setColor(old);
     }
 }

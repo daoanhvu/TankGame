@@ -1,17 +1,64 @@
 {
 	"version": "ULTIMATE",
 	"characters": [
-		{
-			"name": "werewolf",
-			"point": 1,
-			"description": "",
-			"question": ""
-		},
-		{
-			"name": "werewolf",
-			"point": 1,
-			"description": "",
-			"question": ""
-		}
+      {
+        "name": "werewolf",
+        "point": -6,
+        "description": "Wake with other werewolfs each night and choose a villager to eat",
+        "question": "Who do you want to kill?",
+        "count": 6,
+        "image": ""
+      },
+      {
+        "name": "villager",
+        "point": 1,
+        "description": "",
+        "question": "",
+        "count": 6,
+        "image": ""
+      },
+      {
+        "name": "spell_caster",
+        "point": 1,
+        "description": "Each night, choose a player to silence the following day.",
+        "question": "Who do you want to cast?",
+        "count": 6,
+        "image": ""
+      },
+      {
+        "name": "bodyguard",
+        "point": 3,
+        "description": "At night, can protect one person per night and he can protect himself as well",
+        "question": "Who do you want to protect?",
+        "image": ""
+      },
+      {
+        "name": "idiot",
+        "point": 2,
+        "description": "",
+        "question": "",
+        "image": ""
+      },
+      {
+        "name": "Witch",
+        "point": 4,
+        "description": "You may save of eliminate a player at night, once each per game.",
+        "question": "",
+        "image": ""
+      },
+      {
+        "name": "hunter",
+        "point": 3,
+        "description": "If you die, you may immediately kill another player.",
+        "question": "",
+        "image": ""
+      },
+      {
+        "name": "lycan",
+        "point": -1,
+        "description": "You are a villager, but you appear to Seer as a Werewolf!",
+        "question": "",
+        "image": ""
+      }
 	]
 }
