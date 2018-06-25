@@ -2,64 +2,76 @@ package com.nautilus.game.engine;
 
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.graphics.Canvas;
-import android.graphics.Paint;
-import android.media.ImageReader;
 
 import com.nautilus.game.TankGameAppliction;
+import com.nautilus.game.model.GameObject;
+import com.nautilus.game.model.BattleMap;
+import com.nautilus.game.model.Tank;
 
-import java.io.FileInputStream;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.util.ArrayList;
 
 /**
  * Created by davu on 5/3/2016.
  */
 public class DefaultGameEngine implements IGameEngine {
-
     static final String TAG = "DefaultGameEngine";
-    boolean mRunning = false;
 
-    Bitmap[] mapTitle = new Bitmap[15];
-    int mapCol, mapRow;
-    int[][] mapData;
+    private boolean mRunning = false;
+    private Thread gameThread;
+    private final ArrayList<Runnable> mEventQueue = new ArrayList<Runnable>();
+    private final Object syncEventQueue = new Object();
+    private final Object syncRender = new Object();
+
+    //Data
+    private BattleMap map;
+    private ArrayList<Tank> tanks;
 
     public DefaultGameEngine() {
-        mapRow = 90;
-        mapCol = 27;
-        mapData = new int[mapRow][mapCol];
-
-        for(int i=0; i<mapRow; i++) {
-            for(int j=0; j<mapCol; j++) {
-                mapData[i][j] = 0;
-            }
-        }
     }
 
-    public void loadMap() {
-        InputStream fis;
+    public void load(File file) {
+        InputStream fis = null;
         Bitmap bmp;
+        int row;
+        int col;
         try {
-            for (int i = 1; i < 16; i++) {
-                fis = TankGameAppliction.getInstance().getAssets().open("mapTile" + i + ".png");
-                bmp = BitmapFactory.decodeStream(fis);
-                mapTitle[i-1] = bmp;
-            }
-        }catch(IOException ex) {
-        }finally {
 
+            if(file != null) {
+                return;
+            }
+
+            //Load default map
+            fis = TankGameAppliction.getInstance().getAssets().open("map1.data");
+            BufferedReader br = new BufferedReader(new InputStreamReader(fis));
+            row = Integer.parseInt(br.readLine());
+            col = Integer.parseInt(br.readLine());
+            int data[][] = new int[row][col];
+            for (int i = 0; i < row; ++i) {
+                String line = br.readLine();
+                String[] ele = line.split(" ");
+
+                for(int j=0; j<col; ++j) {
+                    data[i][j] = Integer.parseInt(ele[j]);
+                }
+            }
+            map = new BattleMap(row, col, data);
+        }catch(IOException ex) {
+            ex.printStackTrace();
         }
     }
 
-    public void drawMap(Canvas canvas, Paint paint) {
-        int x, y;
-        for(int i=0; i<mapRow; i++) {
-            for(int j=0; j<mapCol; j++) {
-                x = i * 32;
-                y = j * 32;
-                canvas.drawBitmap(mapTitle[mapData[i][j]], x, y, paint);
-            }
-        }
+    @Override
+    public void start() {
+        if(mRunning)
+            return;
+        gameThread = new Thread(this);
+        gameThread.start();
     }
 
     @Override
@@ -67,19 +79,57 @@ public class DefaultGameEngine implements IGameEngine {
         if(mRunning) {
             mRunning = false;
         }
-        for (int i = 0; i < 15; i++) {
-            mapTitle[i].recycle();
-        }
     }
 
     @Override
     public void run() {
-        try {
-            while (mRunning) {
-                Thread.sleep(5);
+        Runnable event = null;
+        while (mRunning) {
+            synchronized(syncEventQueue) {
+                if (!mEventQueue.isEmpty()) {
+                    event = mEventQueue.remove(0);
+                    syncEventQueue.notifyAll();
+                }
             }
-        }catch(InterruptedException ex) {
-            android.util.Log.e(TAG, ex.getMessage());
+
+            synchronized(syncRender) {
+                if (event != null) {
+                    event.run();
+                    event = null;
+                }
+
+                //Game state may changed here
+            }
+        }
+    }
+
+    public void queueEvent(Runnable task) {
+        synchronized (syncEventQueue) {
+            mEventQueue.add(task);
+            syncEventQueue.notifyAll();
+        }
+    }
+
+    @Override
+    public void stop() {
+        Runnable task = new Runnable() {
+            @Override
+            public void run() {
+                mRunning = false;
+            }
+        };
+        synchronized (syncEventQueue) {
+            mEventQueue.add(task);
+            syncEventQueue.notifyAll();
+        }
+    }
+
+    //This function is called from UI Thread
+    @Override
+    public void render() {
+        synchronized (syncRender) {
+            map.render();
+            syncRender.notifyAll();
         }
     }
 }

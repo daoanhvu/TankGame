@@ -2,6 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.nautilus.game">
 
+    <uses-feature android:glEsVersion="0x00020000" android:required="true" />
     <application
         android:name="com.nautilus.game.TankGameAppliction"
         android:allowBackup="true"

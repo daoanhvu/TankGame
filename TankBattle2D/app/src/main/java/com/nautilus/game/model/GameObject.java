@@ -1,5 +1,7 @@
 package com.nautilus.game.model;
 
+import java.io.File;
+
 /**
  * Created by davu on 5/3/2016.
  */

@@ -5,9 +5,11 @@ import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Matrix;
 import android.graphics.Paint;
+import android.os.ConditionVariable;
 
 import com.nautilus.game.TankGameAppliction;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 
@@ -24,22 +26,18 @@ public class Tank extends GameObject implements Runnable {
     private boolean moving = false;
 
     final Matrix mMatrix = new Matrix();
-    final Mutex mutex = new Mutex();
-
-    static class Mutex {
-    }
+    final ConditionVariable mutex = new ConditionVariable();
 
     @Override
     public boolean load() {
-        try {
-            InputStream fis = TankGameAppliction.getInstance().getAssets().open("tank4.png");
-            mBitmap = BitmapFactory.decodeStream(fis);
-            width = mBitmap.getWidth();
-            height = mBitmap.getHeight();
-            return true;
-        }catch (IOException e) {
-            return false;
-        }
+        return false;
+    }
+
+    public boolean loadImage(InputStream fis) {
+        mBitmap = BitmapFactory.decodeStream(fis);
+        width = mBitmap.getWidth();
+        height = mBitmap.getHeight();
+        return true;
     }
 
     public void draw(Canvas canvas, Paint mPaint) {
@@ -94,7 +92,7 @@ public class Tank extends GameObject implements Runnable {
                 //moving = false;
             }
         }catch (InterruptedException ex) {
-
+            ex.printStackTrace();
         }
     }
 }

@@ -5,4 +5,8 @@ package com.nautilus.game.engine;
  */
 public interface IGameEngine extends Runnable {
 
+    void start();
+    void stop();
+    void render();
+
 }
