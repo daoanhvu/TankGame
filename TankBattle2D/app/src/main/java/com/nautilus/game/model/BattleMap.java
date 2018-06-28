@@ -37,9 +37,14 @@ public class BattleMap {
         Paint paint = new Paint();
         Canvas canvas = new Canvas(mapBitmap);
         Rect r0 = new Rect(0, 0, 32, 32);
+        Rect r1 = new Rect(0, 0, 32, 32);
+        int x, y;
         for (int i = 0; i < row; ++i) {
+            y = i * 32;
             for(int j=0; j<col; ++j) {
-                canvas.drawBitmap(mapTitle[mapData[i][j]], r0, r0, paint);
+                x = j * 32;
+                r1.set(x, y, x + 32, y + 32);
+                canvas.drawBitmap(mapTitle[mapData[i][j]], r0, r1, paint);
             }
         }
     }
