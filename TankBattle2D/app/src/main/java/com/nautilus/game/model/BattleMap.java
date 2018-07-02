@@ -13,12 +13,20 @@ import java.io.InputStream;
 
 public class BattleMap {
 
+    static final int TILE_SIZE_PIXEL = 32;
+    static final int NUM_OF_TILE = 15;
+
     private int height;
     private int width;
 
-    private Bitmap[] mapTitle = new Bitmap[15];
+    private final Bitmap[] mapTile = new Bitmap[NUM_OF_TILE];
     int[][] mapData;
     private Bitmap mapBitmap = null;
+
+    private float[] textureData = new float[12];
+    private float y_offset;
+    private float mapHeight;
+    private float mapWidth;
 
     public BattleMap() {
     }
@@ -30,21 +38,21 @@ public class BattleMap {
 
         loadMap();
 
-        width = col * mapTitle[0].getWidth();
-        height = row * mapTitle[0].getHeight();
-        Bitmap.Config config = mapTitle[0].getConfig();
+        width = col * mapTile[0].getWidth();
+        height = row * mapTile[0].getHeight();
+        Bitmap.Config config = mapTile[0].getConfig();
         mapBitmap = Bitmap.createBitmap(width, height, config);
-        Paint paint = new Paint();
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         Canvas canvas = new Canvas(mapBitmap);
-        Rect r0 = new Rect(0, 0, 32, 32);
-        Rect r1 = new Rect(0, 0, 32, 32);
+        Rect r0 = new Rect(0, 0, TILE_SIZE_PIXEL, TILE_SIZE_PIXEL);
+        Rect r1 = new Rect(0, 0, TILE_SIZE_PIXEL, TILE_SIZE_PIXEL);
         int x, y;
         for (int i = 0; i < row; ++i) {
-            y = i * 32;
+            y = i * TILE_SIZE_PIXEL;
             for(int j=0; j<col; ++j) {
-                x = j * 32;
-                r1.set(x, y, x + 32, y + 32);
-                canvas.drawBitmap(mapTitle[mapData[i][j]], r0, r1, paint);
+                x = j * TILE_SIZE_PIXEL;
+                r1.set(x, y, x + TILE_SIZE_PIXEL, y + TILE_SIZE_PIXEL);
+                canvas.drawBitmap(mapTile[mapData[i][j]], r0, r1, paint);
             }
         }
     }
@@ -59,16 +67,20 @@ public class BattleMap {
     public void finalize() {
         if(mapBitmap != null)
             mapBitmap.recycle();
+
+        for (int i = 0; i < NUM_OF_TILE; i++) {
+            mapTile[i].recycle();
+        }
     }
 
-    public void loadMap() {
+    private void loadMap() {
         InputStream fis;
         Bitmap bmp;
         try {
-            for (int i = 1; i < 16; i++) {
+            for (int i = 1; i <= NUM_OF_TILE; i++) {
                 fis = TankGameAppliction.getInstance().getAssets().open("mapTile" + i + ".png");
                 bmp = BitmapFactory.decodeStream(fis);
-                mapTitle[i-1] = bmp;
+                mapTile[i-1] = bmp;
             }
         }catch(IOException ex) {
             ex.printStackTrace();
