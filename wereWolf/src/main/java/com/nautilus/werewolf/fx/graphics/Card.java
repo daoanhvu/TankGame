@@ -5,41 +5,49 @@ import javafx.scene.effect.Effect;
 import javafx.scene.image.Image;
 
 public class Card {
-    private int x;
-    private int y;
-    private int width;
-    private int height;
+    private double x;
+    private double y;
+    private double width;
+    private double height;
     private Image image;
+    
+    public Card() {
+    }
+    
+    public Card(double w, double h) {
+    	this.width = w;
+    	this.height = h;
+    }
 
-    public int getX() {
+    public double getX() {
         return x;
     }
 
-    public void setX(int x) {
+    public void setX(double x) {
         this.x = x;
     }
 
-    public int getY() {
+    public double getY() {
         return y;
     }
 
-    public void setY(int y) {
+    public void setY(double y) {
         this.y = y;
     }
 
-    public int getWidth() {
+    public double getWidth() {
         return width;
     }
 
-    public void setWidth(int width) {
+    public void setWidth(double width) {
         this.width = width;
     }
 
-    public int getHeight() {
+    public double getHeight() {
         return height;
     }
 
-    public void setHeight(int height) {
+    public void setHeight(double height) {
         this.height = height;
     }
 
@@ -58,9 +66,9 @@ public class Card {
             double oldAlpha = g.getGlobalAlpha();
             Effect oldEffect = g.getEffect(null);
             g.setGlobalAlpha(0.45);
-            g.setGlobalAlpha(0.45);
             g.drawImage(image, x, y, width, height);
             g.setGlobalAlpha(oldAlpha);
+            g.setEffect(oldEffect);
         }
     }
 }

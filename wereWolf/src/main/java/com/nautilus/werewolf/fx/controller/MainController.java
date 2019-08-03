@@ -1,6 +1,8 @@
 package com.nautilus.werewolf.fx.controller;
 
 import com.nautilus.werewolf.fx.FXHelper;
+import com.nautilus.werewolf.model.Game;
+
 import javafx.application.Platform;
 import javafx.event.EventHandler;
 import javafx.fxml.FXML;
@@ -9,6 +11,7 @@ import javafx.scene.control.Menu;
 import javafx.scene.control.MenuBar;
 import javafx.scene.control.MenuItem;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.Pane;
 import javafx.stage.Stage;
 import javafx.stage.WindowEvent;
 
@@ -22,8 +25,13 @@ public class MainController extends GenericController implements Initializable {
 
     @FXML
     private BorderPane mainWindow;
+    
+    @FXML
+    private Pane centerPane;
 
     private GenericController centerController;
+    
+    private Game currentGame;
 
     public MainController() {
     }
@@ -40,23 +48,16 @@ public class MainController extends GenericController implements Initializable {
         Menu menuEdit = new Menu("Edit");
         // --- Menu Action
         Menu menuTools = new Menu("Tools");
-        MenuItem vehicleSimulator = new MenuItem("Vehicle Simulator");
+        MenuItem mniNewGame = new MenuItem("New Game");
         MenuItem migrateSimulator = new MenuItem("Migrate Simulator");
         MenuItem exportLiveEventItem = new MenuItem("Export Live VehicleLiveEvent");
-        menuTools.getItems().add(vehicleSimulator);
+        menuTools.getItems().add(mniNewGame);
         menuTools.getItems().add(migrateSimulator);
         menuTools.getItems().add(exportLiveEventItem);
-        vehicleSimulator.setOnAction(t -> {
-            try {
-                if(mainWindow.getCenter() != null && centerController != null) {
-                    centerController.onClosing();
-                }
-
-                MainController.this.centerController = FXHelper.loadComponentFromFXML(mainStage, "/vehiclesimulator.fxml");
-                mainWindow.setCenter(centerController.getLoadedRootNode());
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+        mniNewGame.setOnAction(t -> {
+            this.currentGame = new Game(centerPane.getWidth(), centerPane.getHeight());
+            centerPane.getChildren().add(this.currentGame.gameCanvas());
+            this.currentGame.start();
         });
         migrateSimulator.setOnAction(t -> {
             if(mainWindow.getCenter() != null && centerController != null) {
@@ -131,13 +132,17 @@ public class MainController extends GenericController implements Initializable {
                 centerController.onClosing();
             }
             System.out.println("Main window is closing using EventHandler");
-            //
+            if(this.currentGame != null) {
+            	this.currentGame.stop();
+            }
         };
     }
 
     @Override
     public void onClosing() {
         System.out.println("Main window is closing");
+        System.out.println("Main window is hiding");
+        
     }
 
     @Override
@@ -145,7 +150,6 @@ public class MainController extends GenericController implements Initializable {
         if(centerController != null) {
             centerController.onHiding();
         }
-        System.out.println("Main window is hiding");
     }
 
     @Override
