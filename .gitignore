@@ -1,3 +1,7 @@
 TankBattle2D/.idea/
 TankBattleC/build/
 TankBattleC/_deps/
+
+IOSTankBattle/build/*
+IOSTankBattle/TankGameCore/.build/
+IOSTankBattle/TankGameCore/build/
