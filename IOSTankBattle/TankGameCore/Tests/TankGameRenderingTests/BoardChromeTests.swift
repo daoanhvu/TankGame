@@ -11,10 +11,10 @@ import TankGameCore
 final class BoardFrameNodeTests: XCTestCase {
 
     func testFrameThicknessScalesWithTheTileButHasAFloor() {
-        XCTAssertEqual(BoardFrameNode.inset(forTileSize: 64), 27)
-        XCTAssertEqual(BoardFrameNode.inset(forTileSize: 100), 42)
+        XCTAssertEqual(BoardFrameNode.inset(forTileSize: 64), 9)
+        XCTAssertEqual(BoardFrameNode.inset(forTileSize: 100), 14)
         // A tiny tile would otherwise give a border too thin to read as one.
-        XCTAssertEqual(BoardFrameNode.inset(forTileSize: 20), 14)
+        XCTAssertEqual(BoardFrameNode.inset(forTileSize: 20), 6)
     }
 
     func testFrameSurroundsTheGridOnEverySide() {
@@ -45,11 +45,11 @@ final class BoardFrameNodeTests: XCTestCase {
         let screen = CGSize(width: 390, height: 600)
 
         let bare = layout.scaleToFit(screen, padding: 6)
-        let framed = layout.scaleToFit(screen, padding: 6, outset: 27)
+        let framed = layout.scaleToFit(screen, padding: 6, outset: 9)
         XCTAssertLessThan(framed, bare)
 
         // And the frame then fits inside the usable width.
-        let used = (layout.size.width + 27 * 2) * framed
+        let used = (layout.size.width + 9 * 2) * framed
         XCTAssertLessThanOrEqual(used, screen.width - 12 + 0.001)
     }
 

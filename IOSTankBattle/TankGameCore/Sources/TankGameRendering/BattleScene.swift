@@ -19,6 +19,7 @@ public final class BattleScene: SKScene {
     private var hud: HUDNode!
     private var gameOver: GameOverNode!
     private let boardContainer = SKNode()
+    private let fieldBackground = SKSpriteNode()
 
     /// True while events are animating, when taps are ignored.
     private var isAnimating = false
@@ -39,6 +40,12 @@ public final class BattleScene: SKScene {
     /// model and this is the bookkeeping that keeps the two reconcilable.
     private var previewTankID: TankID?
     private var previewRoute: [Position] = []
+
+    /// Shown under "OPERATION" in the HUD. The map has no name of its own yet,
+    /// so the scene carries one.
+    public var operationName: String = "Crossing" {
+        didSet { hud?.operationName = operationName }
+    }
 
     /// Space to keep clear of the notch and the home indicator. The hosting
     /// view controller sets this once it knows its safe area.
@@ -88,6 +95,11 @@ public final class BattleScene: SKScene {
         super.didMove(to: view)
         guard board == nil else { return }
 
+        fieldBackground.color = theme.fieldBackground
+        fieldBackground.anchorPoint = .zero
+        fieldBackground.zPosition = -50
+        addChild(fieldBackground)
+
         addChild(boardContainer)
         board = BoardNode(state: interaction.state, catalog: catalog, theme: theme)
         boardContainer.addChild(board)
@@ -97,7 +109,8 @@ public final class BattleScene: SKScene {
         boardFrame = BoardFrameNode(boardSize: board.size, tileSize: catalog.tileSize, theme: theme)
         boardContainer.addChild(boardFrame)
 
-        hud = HUDNode(sceneSize: size, insets: safeAreaInsets, theme: theme)
+        hud = HUDNode(sceneSize: size, insets: safeAreaInsets, theme: theme, catalog: catalog)
+        hud.operationName = operationName
         addChild(hud)
         hud.onAttack = { [weak self] in self?.commit { $0.attack() } }
         hud.onWait = { [weak self] in self?.commit { $0.wait() } }
@@ -131,6 +144,9 @@ public final class BattleScene: SKScene {
         let available = CGSize(width: size.width,
                                height: max(size.height - hud.topInset - hud.bottomInset, 1))
         let scale = board.layout.scaleToFit(available, padding: 6, outset: boardFrame.inset)
+
+        fieldBackground.position = CGPoint(x: 0, y: hud.bottomInset)
+        fieldBackground.size = CGSize(width: size.width, height: available.height)
 
         boardContainer.setScale(scale)
         boardContainer.position = CGPoint(

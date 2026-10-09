@@ -1,0 +1,68 @@
+import XCTest
+import SpriteKit
+import TankGameCore
+@testable import TankGameRendering
+
+/// The command bar's cells are flat — no fill, no rim — so the thing most
+/// likely to break is the one that matters: that a tap anywhere in a cell,
+/// not just on its icon or caption, reaches the button.
+@MainActor
+final class CommandBarTests: XCTestCase {
+
+    private func makeScene() throws -> (SKScene, HUDNode) {
+        let size = CGSize(width: 402, height: 874)
+        let scene = SKScene(size: size)
+        scene.anchorPoint = .zero
+        let hud = HUDNode(sceneSize: size, insets: BoardInsets(top: 59, bottom: 34),
+                          theme: .standard,
+                          catalog: SpriteCatalog(bundle: Bundle(for: CommandBarTests.self)))
+        scene.addChild(hud)
+        let view = SKView(frame: CGRect(origin: .zero, size: size))
+        view.presentScene(scene)
+        return (scene, hud)
+    }
+
+    func testEveryCommandIsTappableAcrossItsWholeCell() throws {
+        let (_, hud) = try makeScene()
+        let expected = [HUDNode.ButtonID.attack, HUDNode.ButtonID.wait,
+                        HUDNode.ButtonID.cancel, HUDNode.ButtonID.pass]
+        let cellWidth = 402.0 / 4.0
+        // A band inside each cell, away from the icon and the caption.
+        let y = 34.0 + 10.0
+
+        for (index, identifier) in expected.enumerated() {
+            for fraction in [0.15, 0.5, 0.85] {
+                let x = cellWidth * (Double(index) + fraction)
+                let hit = hud.button(atScenePoint: CGPoint(x: x, y: y))
+                XCTAssertEqual(hit?.identifier, identifier,
+                               "no hit at \(Int(fraction * 100))% across the \(identifier) cell")
+            }
+        }
+    }
+
+    func testTapsAboveTheBarDoNotHitACommand() throws {
+        let (_, hud) = try makeScene()
+        // Well up in the board area: the board must get this, not the HUD.
+        XCTAssertNil(hud.button(atScenePoint: CGPoint(x: 200, y: 500)))
+    }
+
+    func testDisabledCommandsAreNotTappable() throws {
+        let (_, hud) = try makeScene()
+        let state = try GameState.newGame(config: .phase1Default,
+                                          map: try GameMap(ascii: Maps.crossing))
+        hud.update(with: BoardInteraction(state: state))
+
+        // Nothing is selected, so Attack, Wait and Cancel are all unavailable.
+        let cellWidth = 402.0 / 4.0
+        let y = 34.0 + 10.0
+        XCTAssertNil(hud.button(atScenePoint: CGPoint(x: cellWidth * 0.5, y: y)))
+        XCTAssertEqual(hud.button(atScenePoint: CGPoint(x: cellWidth * 3.5, y: y))?.identifier,
+                       HUDNode.ButtonID.pass, "Pass is always available")
+    }
+
+    func testSectorReadsAsAMapReference() {
+        XCTAssertEqual(HUDNode.sector(of: Position(x: 0, y: 0)), "A-1")
+        XCTAssertEqual(HUDNode.sector(of: Position(x: 2, y: 3)), "C-4")
+        XCTAssertEqual(HUDNode.sector(of: Position(x: 11, y: 9)), "L-10")
+    }
+}

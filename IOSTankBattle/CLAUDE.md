@@ -108,9 +108,13 @@ The scene code is in `TankGameRendering` (not the app target) so it is unit-test
 - `BoardInteraction` — the whole tap flow as a pure state machine; the only thing that calls `Rules.apply`.
 - `BoardNode` / `TankSprite` — drawing and event animations. `BoardLayout` converts grid ↔ points
   (the model's y grows DOWN, SpriteKit's grows UP, so every conversion flips y).
-- `HUDNode`, `ButtonNode`, `GameOverNode`, `BoardFrameNode` — overlays and the border around the
-  field, all drawn in code. `BoardTheme` holds every color and `TextStyle`/`BoardFonts` the type
-  (condensed caps, with a fallback chain for devices missing the face).
+- `HUDNode`, `UnitCardNode`, `ButtonNode`, `CommandIcons`, `GameOverNode`, `BoardFrameNode` — the
+  chrome, all drawn in code, following `docs/ScreenDesign.png`: operation/turn header, a unit card per
+  side, the sector strip, the status line and the segmented command bar. `BoardTheme` holds every color
+  and `TextStyle`/`BoardFonts` the type (condensed caps, with a fallback chain for devices missing the
+  face).
+- `TankAtlas` / `TankSkin` — tank art from `IOSTankBattle/Art/tank_atlas.{png,json}`; blue for the
+  player, red for the AI, type read from the HUD rather than the hull. See `docs/sprite_design.md`.
 - `BattleScene` — routes taps and blocks input while animating.
 The app's `GameViewController` just presents `BattleScene` and feeds it the safe-area insets.
 

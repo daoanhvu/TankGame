@@ -10,24 +10,36 @@ import TankGameCore
 @MainActor
 public final class ButtonNode: SKNode {
 
+    /// How the control is drawn. `.plate` is a standalone bevelled button;
+    /// `.command` is one cell of the segmented bar along the bottom of the
+    /// screen, where the icon carries the meaning and the caption confirms it.
+    public enum Appearance: Sendable { case plate, command }
+
     public let identifier: String
     public let style: BoardTheme.ButtonStyle
+    public let appearance: Appearance
     public var onTap: (() -> Void)?
 
     private let shadow: SKShapeNode
     private let background: SKShapeNode
     private let gloss: SKShapeNode
     private let label: SKLabelNode
+    private let icon: CommandIcon?
+    private var iconNode: SKNode?
     private let theme: BoardTheme
     private let textStyle: TextStyle
 
     public init(identifier: String, title: String, size: CGSize, theme: BoardTheme,
-                style: BoardTheme.ButtonStyle = .neutral) {
+                style: BoardTheme.ButtonStyle = .neutral,
+                appearance: Appearance = .plate,
+                icon: CommandIcon? = nil) {
         self.identifier = identifier
         self.style = style
+        self.appearance = appearance
+        self.icon = icon
         self.theme = theme
 
-        let radius = min(6, size.height / 3)
+        let radius = appearance == .command ? 2 : min(6, size.height / 3)
         let palette = theme.palette(for: style)
 
         shadow = SKShapeNode(rectOf: size, cornerRadius: radius)
@@ -50,9 +62,9 @@ public final class ButtonNode: SKNode {
 
         // Captions are short, so they can take wide tracking without crowding.
         // The size tracks the plate so a narrow four-button row still fits.
-        textStyle = theme.buttonStyle
-            .sized(min(17, size.height * 0.40))
-            .colored(palette.text)
+        textStyle = appearance == .command
+            ? theme.commandStyle.colored(palette.text)
+            : theme.buttonStyle.sized(min(17, size.height * 0.40)).colored(palette.text)
         label = textStyle.makeLabel(title)
         label.verticalAlignmentMode = .center
         label.horizontalAlignmentMode = .center
@@ -63,6 +75,24 @@ public final class ButtonNode: SKNode {
         addChild(gloss)
         addChild(label)
         name = identifier
+
+        if appearance == .command {
+            // A cell in the bar: no bevel, no rim, the panel shows through.
+            shadow.isHidden = true
+            gloss.isHidden = true
+            background.fillColor = .clear
+            background.strokeColor = .clear
+            let radius = min(11, size.height * 0.24)
+            label.position = CGPoint(x: 0, y: -size.height * 0.30)
+            iconRadiusBase = radius
+            iconPosition = CGPoint(x: 0, y: size.height * 0.12)
+            if let icon {
+                let node = icon.node(radius: radius, color: palette.text)
+                node.position = iconPosition
+                iconNode = node
+                addChild(node)
+            }
+        }
     }
 
     @available(*, unavailable)
@@ -76,14 +106,45 @@ public final class ButtonNode: SKNode {
     public var isEnabled: Bool = true {
         didSet {
             let palette = isEnabled ? theme.palette(for: style) : theme.disabledPalette
+            textStyle.colored(palette.text).apply(to: label, text: title)
+
+            guard appearance == .plate else {
+                // A command cell shows its state through the icon and caption;
+                // giving it a fill would break the run of the bar.
+                redrawIcon(color: palette.text)
+                alpha = 1.0
+                return
+            }
             background.fillColor = palette.fill
             background.strokeColor = palette.stroke
             gloss.isHidden = !isEnabled
             shadow.isHidden = !isEnabled
-            textStyle.colored(palette.text).apply(to: label, text: title)
             alpha = isEnabled ? 1.0 : 0.75
         }
     }
+
+    /// Lifts the one command the player is most likely to want next, the way
+    /// the middle cell is lifted in the design.
+    public var isPrimary: Bool = false {
+        didSet {
+            guard appearance == .command, isPrimary != oldValue else { return }
+            background.fillColor = isPrimary
+                ? theme.buttonFill.withAlphaComponent(0.55) : .clear
+        }
+    }
+
+    private func redrawIcon(color: SKColor) {
+        guard let icon else { return }
+        iconNode?.removeFromParent()
+        let radius = min(11, iconRadiusBase)
+        let node = icon.node(radius: radius, color: color)
+        node.position = iconPosition
+        iconNode = node
+        addChild(node)
+    }
+
+    private var iconRadiusBase: CGFloat = 11
+    private var iconPosition: CGPoint = .zero
 
     /// Whether this button would react to a tap at all.
     public var isTappable: Bool {
@@ -136,15 +197,17 @@ public final class ButtonNode: SKNode {
             .fadeAlpha(to: 0.0, duration: 0.05),
             .fadeAlpha(to: 1.0, duration: 0.07),
         ]))
-        let rim = theme.palette(for: style).stroke
-        background.strokeColor = theme.frameAccent
-        run(.sequence([
-            .wait(forDuration: 0.12),
-            .run { [weak self] in
-                guard let self, self.isEnabled else { return }
-                self.background.strokeColor = rim
-            },
-        ]))
+        if appearance == .plate {
+            let rim = theme.palette(for: style).stroke
+            background.strokeColor = theme.frameAccent
+            run(.sequence([
+                .wait(forDuration: 0.12),
+                .run { [weak self] in
+                    guard let self, self.isEnabled else { return }
+                    self.background.strokeColor = rim
+                },
+            ]))
+        }
         onTap?()
     }
 }

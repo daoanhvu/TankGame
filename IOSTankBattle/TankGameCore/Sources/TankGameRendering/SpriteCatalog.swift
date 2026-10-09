@@ -31,12 +31,12 @@ public struct PlaceholderPalette {
                 .ai:     SKColor(red: 0.85, green: 0.25, blue: 0.20, alpha: 1), // red
             ],
             terrainColors: [
-                .open:  SKColor(red: 0.62, green: 0.74, blue: 0.45, alpha: 1), // light green
-                .trees: SKColor(red: 0.20, green: 0.45, blue: 0.22, alpha: 1), // dark green
-                .rocks: SKColor(red: 0.45, green: 0.43, blue: 0.40, alpha: 1), // grey
-                .water: SKColor(red: 0.25, green: 0.55, blue: 0.80, alpha: 1), // blue
+                .open:  SKColor(red: 0.231, green: 0.302, blue: 0.212, alpha: 1), // olive field
+                .trees: SKColor(red: 0.133, green: 0.204, blue: 0.129, alpha: 1), // dark wood
+                .rocks: SKColor(red: 0.278, green: 0.282, blue: 0.251, alpha: 1), // stone
+                .water: SKColor(red: 0.149, green: 0.278, blue: 0.333, alpha: 1), // deep water
             ],
-            gridLineColor: SKColor(white: 0, alpha: 0.15),
+            gridLineColor: SKColor(white: 1, alpha: 0.05),
             labelColor: .white
         )
     }

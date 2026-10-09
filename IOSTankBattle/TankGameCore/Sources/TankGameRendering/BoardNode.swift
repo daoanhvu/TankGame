@@ -173,15 +173,7 @@ public final class BoardNode: SKNode {
             highlightLayer.addChild(tileOverlay(at: tile, color: theme.attackHighlight))
         }
         if let aimedTile {
-            let ring = SKShapeNode(rectOf: CGSize(width: layout.tileSize * 0.9,
-                                                  height: layout.tileSize * 0.9),
-                                   cornerRadius: 4)
-            ring.strokeColor = theme.attackHighlight
-            ring.lineWidth = 3
-            ring.fillColor = .clear
-            ring.position = layout.point(for: aimedTile)
-            ring.zPosition = 2
-            highlightLayer.addChild(ring)
+            highlightLayer.addChild(reticle(at: aimedTile))
         }
         if path.count > 1 {
             let line = CGMutablePath()
@@ -208,6 +200,35 @@ public final class BoardNode: SKNode {
 
     public func clearHighlights() {
         highlightLayer.removeAllChildren()
+    }
+
+    /// The target marker: a ring with ticks, matching the command bar's attack
+    /// icon so the same idea looks the same in both places.
+    private func reticle(at tile: Position) -> SKNode {
+        let group = SKNode()
+        let radius = layout.tileSize * 0.44
+        let colour = SKColor(red: 0.90, green: 0.30, blue: 0.24, alpha: 1)
+
+        let ring = SKShapeNode(circleOfRadius: radius)
+        ring.strokeColor = colour
+        ring.lineWidth = 2
+        ring.fillColor = .clear
+        group.addChild(ring)
+
+        let ticks = CGMutablePath()
+        for (dx, dy) in [(0.0, 1.0), (0.0, -1.0), (1.0, 0.0), (-1.0, 0.0)] {
+            ticks.move(to: CGPoint(x: radius * 0.55 * dx, y: radius * 0.55 * dy))
+            ticks.addLine(to: CGPoint(x: radius * 1.3 * dx, y: radius * 1.3 * dy))
+        }
+        let marks = SKShapeNode(path: ticks)
+        marks.strokeColor = colour
+        marks.lineWidth = 2
+        marks.lineCap = .round
+        group.addChild(marks)
+
+        group.position = layout.point(for: tile)
+        group.zPosition = 3
+        return group
     }
 
     private func tileOverlay(at tile: Position, color: SKColor) -> SKNode {
