@@ -479,11 +479,124 @@ final class TurnFlowTests: XCTestCase {
 
         state = try Rules.apply(.pass, to: state).state
         XCTAssertEqual(state.currentSide, .ai)
-        XCTAssertEqual(state.round, 1, "Still the same round: the AI has not acted yet")
+        XCTAssertEqual(state.round, 1, "Still the same round: the AI has not had its turn")
 
         state = try Rules.apply(.pass, to: state).state
         XCTAssertEqual(state.currentSide, .player)
-        XCTAssertEqual(state.round, 2, "A round is one action from each side")
+        XCTAssertEqual(state.round, 2, "A round is one turn from each side")
+    }
+
+    // MARK: A turn is one action per tank
+
+    func testTheSideKeepsTheBoardUntilEveryTankHasActed() throws {
+        var state = try makeState(openMap, tanks: [
+            tank(0, .player, .light, 0, 0),
+            tank(1, .player, .medium, 1, 0),
+            tank(2, .ai, .light, 4, 4),
+        ])
+        XCTAssertEqual(state.pendingTanks(of: .player).map(\.id), [0, 1])
+
+        state = try Rules.apply(.command(TankCommand(tankID: 0, destination: p(0, 1))),
+                                to: state).state
+        XCTAssertEqual(state.currentSide, .player, "One tank moved; the turn is not over")
+        XCTAssertTrue(state.hasActed(0))
+        XCTAssertEqual(state.pendingTanks(of: .player).map(\.id), [1])
+        XCTAssertFalse(state.isTurnComplete)
+
+        state = try Rules.apply(.command(TankCommand(tankID: 1, destination: p(1, 1))),
+                                to: state).state
+        XCTAssertEqual(state.currentSide, .ai, "Every tank has acted, so the turn is over")
+    }
+
+    func testTheHandOverGivesEveryTankItsGoBack() throws {
+        var state = try makeState(openMap, tanks: [
+            tank(0, .player, .light, 0, 0),
+            tank(1, .ai, .light, 4, 4),
+        ])
+        state = try Rules.apply(.command(TankCommand(tankID: 0, destination: p(0, 1))),
+                                to: state).state
+
+        XCTAssertEqual(state.currentSide, .ai)
+        XCTAssertTrue(state.actedThisTurn.isEmpty, "The record belongs to the turn, not the tank")
+        XCTAssertEqual(state.pendingTanks(of: .ai).map(\.id), [1])
+        XCTAssertFalse(state.hasActed(0), "Blue's tank gets its go back next turn")
+    }
+
+    func testATankOnlyActsOncePerTurn() throws {
+        var state = try makeState(openMap, tanks: [
+            tank(0, .player, .light, 0, 0),
+            tank(1, .player, .medium, 1, 0),
+            tank(2, .ai, .light, 4, 4),
+        ])
+        state = try Rules.apply(.command(TankCommand(tankID: 0, destination: p(0, 1))),
+                                to: state).state
+
+        XCTAssertThrowsError(try Rules.apply(
+            .command(TankCommand(tankID: 0, destination: p(0, 2))), to: state)) {
+            XCTAssertEqual($0 as? IllegalAction, .tankAlreadyActed(0))
+        }
+    }
+
+    func testPassingGivesUpTheRestOfTheTurn() throws {
+        var state = try makeState(openMap, tanks: [
+            tank(0, .player, .light, 0, 0),
+            tank(1, .player, .medium, 1, 0),
+            tank(2, .ai, .light, 4, 4),
+        ])
+        state = try Rules.apply(.command(TankCommand(tankID: 0, destination: p(0, 1))),
+                                to: state).state
+        XCTAssertEqual(state.currentSide, .player)
+
+        state = try Rules.apply(.pass, to: state).state
+        XCTAssertEqual(state.currentSide, .ai, "Pass ends the turn, tanks waiting or not")
+        XCTAssertEqual(state.tanks[1].position, p(1, 0), "...and the tank that was left stays put")
+    }
+
+    func testDestroyedTanksDoNotHoldTheTurnOpen() throws {
+        var state = try makeState(openMap, tanks: [
+            tank(0, .player, .light, 0, 0),
+            tank(1, .player, .medium, 1, 0, hp: 0),
+            tank(2, .ai, .light, 4, 4),
+        ])
+        XCTAssertEqual(state.pendingTanks(of: .player).map(\.id), [0])
+
+        state = try Rules.apply(.command(TankCommand(tankID: 0, destination: p(0, 1))),
+                                to: state).state
+        XCTAssertEqual(state.currentSide, .ai, "The only living tank acted")
+    }
+
+    func testATankKilledByTheCounterattackStillSpentItsTurn() throws {
+        // Blue's light attacks and dies to the medium firing back. It has had
+        // its go, so with nobody else waiting the turn passes.
+        var state = try makeState(openMap, tanks: [
+            tank(0, .player, .light, 1, 1, hp: 2),
+            tank(1, .ai, .medium, 1, 2),
+        ])
+        state = try Rules.apply(
+            .command(TankCommand(tankID: 0, destination: p(1, 1), targetID: 1)), to: state).state
+
+        XCTAssertFalse(state.tanks[0].isAlive)
+        XCTAssertEqual(state.status, .finished(.win(.ai, .annihilation)))
+    }
+
+    func testTurnBeganIsOnlyReportedWhenTheSideActuallyChanges() throws {
+        // The renderer uses this event to announce the turn, so it must not
+        // fire between two tanks of the same side.
+        var state = try makeState(openMap, tanks: [
+            tank(0, .player, .light, 0, 0),
+            tank(1, .player, .medium, 1, 0),
+            tank(2, .ai, .light, 4, 4),
+        ])
+
+        let first = try Rules.apply(.command(TankCommand(tankID: 0, destination: p(0, 1))),
+                                    to: state)
+        state = first.state
+        XCTAssertFalse(first.events.contains { if case .turnBegan = $0 { return true } else { return false } },
+                       "Still Blue's turn")
+
+        let second = try Rules.apply(.command(TankCommand(tankID: 1, destination: p(1, 1))),
+                                     to: state)
+        XCTAssertTrue(second.events.contains(.turnBegan(.ai, round: 1)))
     }
 
     func testPassEmitsAnEventAndChangesNothingElse() throws {
@@ -502,6 +615,28 @@ final class TurnFlowTests: XCTestCase {
         XCTAssertThrowsError(try Rules.apply(.pass, to: state)) {
             XCTAssertEqual($0 as? IllegalAction, .gameOver)
         }
+    }
+
+    func testRoundsCountFullTurns() throws {
+        // Two tanks a side: a round is four actions now, not two.
+        var state = try makeState(openMap, tanks: [
+            tank(0, .player, .light, 0, 0),
+            tank(1, .player, .medium, 1, 0),
+            tank(2, .ai, .light, 4, 4),
+            tank(3, .ai, .medium, 3, 4),
+        ])
+        let moves: [TankCommand] = [
+            TankCommand(tankID: 0, destination: p(0, 1)),
+            TankCommand(tankID: 1, destination: p(1, 1)),
+            TankCommand(tankID: 2, destination: p(4, 3)),
+            TankCommand(tankID: 3, destination: p(3, 3)),
+        ]
+        for move in moves {
+            XCTAssertEqual(state.round, 1)
+            state = try Rules.apply(.command(move), to: state).state
+        }
+        XCTAssertEqual(state.round, 2)
+        XCTAssertEqual(state.currentSide, .player)
     }
 
     func testTurnEventsReportTheNewSideAndRound() throws {

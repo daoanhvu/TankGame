@@ -85,6 +85,45 @@ final class BattleSceneAITests: XCTestCase {
         XCTAssertEqual(scene.currentState.round, 4)
     }
 
+    func testRedCommandsEveryTankBeforeHandingBack() throws {
+        // A turn is one action per tank, so Red's turn is five animations, not
+        // one. Watching how many of its tanks have acted at the peak is what
+        // tells a full turn apart from a single move that happened to end it.
+        let scene = try makeScene()
+        var mostActed = 0
+
+        scene.simulatePass()
+        _ = wait { 
+            mostActed = max(mostActed, scene.currentState.actedThisTurn.count)
+            return scene.isAcceptingInput
+        }
+
+        XCTAssertEqual(scene.currentState.currentSide, .player)
+        XCTAssertGreaterThan(mostActed, 1, "Red played a single tank and stopped")
+    }
+
+    func testAnActionWithNothingToAnimateStillHandsOver() throws {
+        // "Wait" without moving produces no events whatsoever: there is no
+        // `.moved` to draw and `.turnBegan` only fires when the side changes.
+        // A scene that reads "no events" as "the rules declined that" leaves
+        // the board on Red's turn with input locked and no way out.
+        let scene = try makeScene()
+        let blueTanks = scene.currentState.aliveTanks(of: .player)
+
+        for tank in blueTanks {
+            XCTAssertTrue(scene.isAcceptingInput, "Blue's turn stalled at tank \(tank.id)")
+            scene.simulateTap(onTile: tank.position)   // select, no move
+            scene.simulateWait()                       // hold position
+            _ = wait(upTo: 1) { scene.isAcceptingInput }
+        }
+
+        // Both conditions: the round counter turns over when Red's last action
+        // is applied, while its move is still being drawn.
+        XCTAssertTrue(wait { scene.currentState.round == 2 && scene.isAcceptingInput },
+                      "Red never got the board after a turn of tanks holding position")
+        XCTAssertEqual(scene.currentState.currentSide, .player)
+    }
+
     func testHotSeatLeavesRedToThePlayer() throws {
         let scene = try makeScene(opponent: nil)
         scene.simulatePass()

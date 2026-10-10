@@ -16,19 +16,27 @@ public enum AIMatch {
         /// The finished state. `status` carries the result.
         public let state: GameState
         public let result: GameResult?
-        /// Actions taken, in order, oldest first.
+        /// Actions taken, in order, oldest first. Several per turn: one per
+        /// tank, plus a `.pass` wherever a side gave up the rest of its turn.
         public let actions: [Action]
         /// Set if a brain offered an action the rules rejected and the driver
         /// had to fall back to `.pass`. Should always be empty; it is here so
         /// that a generator bug shows up as a test failure, not as a hang.
         public let illegalActions: [Action]
 
-        public var turns: Int { actions.count }
+        /// Individual tank actions, not turns.
+        public var actionCount: Int { actions.count }
     }
 
-    /// Asks one AI for an action and applies it, falling back to `.pass` if the
-    /// rules reject it. The single place where an AI's choice meets the rules.
-    public static func takeTurn(_ ai: TankAI, in state: GameState)
+    /// Asks one AI for a single action and applies it, falling back to `.pass`
+    /// if the rules reject it. The single place where an AI's choice meets the
+    /// rules.
+    ///
+    /// One action, not one turn: a turn is every tank of a side acting, so a
+    /// caller that wants the whole turn calls this until `currentSide` changes
+    /// (which is what `play` does, and what the scene does between
+    /// animations).
+    public static func takeAction(_ ai: TankAI, in state: GameState)
         -> (state: GameState, events: [GameEvent], action: Action, wasIllegal: Bool) {
         let chosen = ai.chooseAction(in: state)
         if let result = try? Rules.apply(chosen, to: state) {
@@ -43,7 +51,8 @@ public enum AIMatch {
     /// Plays until the rules end the match.
     ///
     /// - Parameter turnLimit: a hard stop in case a rules change ever lets a
-    ///   match run forever. Reaching it is a bug, not a draw.
+    ///   match run forever. Reaching it is a bug, not a draw. It counts
+    ///   actions, of which a turn now holds one per tank.
     public static func play(_ initial: GameState,
                             player: TankAI,
                             ai: TankAI,
@@ -54,7 +63,7 @@ public enum AIMatch {
 
         while !state.isOver, actions.count < turnLimit {
             let brain: TankAI = state.currentSide == .player ? player : ai
-            let turn = takeTurn(brain, in: state)
+            let turn = takeAction(brain, in: state)
             state = turn.state
             actions.append(turn.action)
             if turn.wasIllegal { illegal.append(turn.action) }

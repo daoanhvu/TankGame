@@ -24,18 +24,29 @@ public struct GameState: Equatable, Codable, Sendable {
     /// All tanks, including destroyed ones. A tank's `id` is its index here.
     public internal(set) var tanks: [Tank]
     public internal(set) var currentSide: Side
-    /// 1-based. A round ends after both sides have acted once.
+    /// 1-based. A round ends after both sides have taken a turn.
     public internal(set) var round: Int
     public internal(set) var status: GameStatus
+    /// Tanks of `currentSide` that have already acted this turn. Cleared when
+    /// the turn passes to the other side.
+    ///
+    /// A turn is one action per tank, not one action per side, so the rules
+    /// have to remember who has had their go. It is kept as a set of IDs rather
+    /// than a flag on `Tank` because it belongs to the turn, not to the tank:
+    /// the AI copies states around freely and a stray flag would survive a
+    /// hand-over it has no business surviving.
+    public internal(set) var actedThisTurn: Set<TankID>
 
     public init(config: GameConfig, map: GameMap, tanks: [Tank],
-                currentSide: Side, round: Int, status: GameStatus) {
+                currentSide: Side, round: Int, status: GameStatus,
+                actedThisTurn: Set<TankID> = []) {
         self.config = config
         self.map = map
         self.tanks = tanks
         self.currentSide = currentSide
         self.round = round
         self.status = status
+        self.actedThisTurn = actedThisTurn
     }
 
     /// Sets up a fresh match: both sides get `config.army`, full HP and ammo,
@@ -73,6 +84,23 @@ public struct GameState: Equatable, Codable, Sendable {
 
     public func aliveTanks(of side: Side) -> [Tank] {
         tanks.filter { $0.side == side && $0.isAlive }
+    }
+
+    /// Whether this tank has already had its go this turn. Always false for
+    /// the side that is not to move: the set is cleared on every hand-over.
+    public func hasActed(_ id: TankID) -> Bool {
+        actedThisTurn.contains(id)
+    }
+
+    /// Living tanks of `side` that still owe this turn an action.
+    public func pendingTanks(of side: Side) -> [Tank] {
+        aliveTanks(of: side).filter { !hasActed($0.id) }
+    }
+
+    /// True once every living tank of the side to move has acted, which is
+    /// what ends its turn (short of passing).
+    public var isTurnComplete: Bool {
+        pendingTanks(of: currentSide).isEmpty
     }
 
     public func totalHP(of side: Side) -> Int {

@@ -4,6 +4,7 @@ public enum IllegalAction: Error, Equatable, Sendable {
     case noSuchTank(TankID)
     case tankDestroyed(TankID)
     case notYourTank(TankID)
+    case tankAlreadyActed(TankID)
     case destinationUnreachable(Position)
     case noSuchTarget(TankID)
     case targetDestroyed(TankID)
@@ -201,7 +202,9 @@ public enum Rules {
             try perform(command, in: &next, events: &events)
         }
 
-        advanceTurn(in: &next, events: &events)
+        // Passing gives up the rest of the turn; otherwise the side keeps the
+        // board until every one of its tanks has had a go.
+        advanceTurn(in: &next, endingTurn: action == .pass, events: &events)
         return (next, events)
     }
 
@@ -217,6 +220,9 @@ public enum Rules {
         }
         guard tank.isAlive else { throw IllegalAction.tankDestroyed(command.tankID) }
         guard tank.side == state.currentSide else { throw IllegalAction.notYourTank(command.tankID) }
+        // One action per tank per turn.
+        guard !state.hasActed(tank.id) else { throw IllegalAction.tankAlreadyActed(command.tankID) }
+        state.actedThisTurn.insert(tank.id)
 
         // 1. Move.
         let origin = tank.position
@@ -274,15 +280,24 @@ public enum Rules {
 
     // MARK: - Tasks 6-7: turn flow and end conditions
 
-    /// Hands the turn to the other side, counts the round, and ends the match
-    /// when someone has won.
-    private static func advanceTurn(in state: inout GameState, events: inout [GameEvent]) {
+    /// Ends the side's turn when it is over, counts the round, and ends the
+    /// match when someone has won.
+    ///
+    /// A turn is every tank of one side acting, so most actions leave the board
+    /// exactly where it is and this does nothing but check for a winner.
+    private static func advanceTurn(in state: inout GameState, endingTurn: Bool,
+                                    events: inout [GameEvent]) {
         if let result = annihilationResult(in: state) {
             finish(state: &state, with: result, events: &events)
             return
         }
 
-        // A round is over once the side that moves second has acted.
+        // Still tanks waiting for orders, and the side has not passed: the
+        // board stays where it is.
+        guard endingTurn || state.isTurnComplete else { return }
+        state.actedThisTurn = []
+
+        // A round is over once the side that moves second has taken its turn.
         let secondSide = state.config.firstSide.opponent
         let roundComplete = state.currentSide == secondSide
         state.currentSide = state.currentSide.opponent

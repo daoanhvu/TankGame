@@ -29,9 +29,13 @@ public final class BattleScene: SKScene {
         }
     }
 
-    /// How long Red appears to think before its move plays. Short enough not
-    /// to feel laggy, long enough that the player sees whose turn it is.
-    public var opponentDelay: TimeInterval = 0.55
+    /// How long Red appears to think before each of its moves plays. Short
+    /// enough not to feel laggy, long enough to follow what moved.
+    ///
+    /// Per TANK, not per turn: Red commands all five in a turn, so this is
+    /// spent up to five times in a row and is shorter than it would be for a
+    /// single move.
+    public var opponentDelay: TimeInterval = 0.3
 
     private var interaction: BoardInteraction
     private var board: BoardNode!
@@ -214,8 +218,9 @@ public final class BattleScene: SKScene {
         // Confirming a move returns the events for it; every other tap just
         // changes what is selected. Dropping these would advance the game
         // without ever animating it.
+        let before = interaction.state
         let events = interaction.tapTile(tile)
-        if events.isEmpty {
+        if interaction.state == before {
             refresh()
         } else {
             present(events)
@@ -223,20 +228,27 @@ public final class BattleScene: SKScene {
     }
 
     /// Runs one of the HUD's committing actions and animates what came out of it.
+    ///
+    /// An empty event list is NOT the same as "nothing happened": a tank told
+    /// to hold its position produces no events at all, since there is no
+    /// `.moved` to animate and `.turnBegan` only fires when the side actually
+    /// changes. That action still spends the tank's go and may well end the
+    /// turn, so what distinguishes it from an action the rules declined is
+    /// whether the state moved, not whether there is anything to draw.
     private func commit(_ action: (inout BoardInteraction) -> [GameEvent]) {
         guard !isBusy, !interaction.isOver else { return }
+        let before = interaction.state
         let events = action(&interaction)
-        // An action the rules declined (Attack with nothing aimed at) leaves the
-        // selection as it was, so just redraw.
-        guard !events.isEmpty else {
-            refresh()
+        guard interaction.state != before else {
+            refresh()               // declined (Attack with nothing aimed at)
             return
         }
         present(events)
     }
 
-    /// Animates a committed turn, from whichever path produced it: a HUD button
-    /// or the confirmation tap on the destination tile.
+    /// Animates a committed action, from whichever path produced it: a HUD
+    /// button, the confirmation tap on the destination tile, or Red's brain.
+    /// Safe with an empty list, which just redraws and hands on.
     private func present(_ events: [GameEvent]) {
         isAnimating = true
         hud.setBusy(true)
@@ -265,7 +277,11 @@ public final class BattleScene: SKScene {
 
     // MARK: - Red's turn
 
-    /// Hands the turn to the opponent if it is owed one, after a beat.
+    /// Plays one of Red's moves if it is owed one, after a beat.
+    ///
+    /// Red's turn is several actions — one per tank — and this runs one of
+    /// them. The completion of the animation calls it again, so the turn plays
+    /// out tank by tank until the board comes back to Blue.
     ///
     /// Safe to call after anything: it is a no-op on a human turn, once the
     /// match is over, or while the board is already busy — the thing that was
@@ -286,15 +302,11 @@ public final class BattleScene: SKScene {
             .run { [weak self] in
                 guard let self else { return }
                 self.isOpponentThinking = false
-                let events = self.interaction.takeAITurn(with: opponent)
-                // `takeAITurn` falls back to passing rather than returning
-                // nothing, so an empty list here means the turn was not Red's
-                // after all; redrawing is the whole of the recovery.
-                guard !events.isEmpty else {
-                    self.refresh()
-                    return
-                }
-                self.present(events)
+                // Straight to `present` even with nothing to animate: a tank
+                // holding its position produces no events, and treating that
+                // as "nothing happened" would leave Red's turn half-played
+                // with the board locked against the player.
+                self.present(self.interaction.takeAIAction(with: opponent))
             },
         ]), withKey: Self.opponentTurnKey)
     }
@@ -436,6 +448,12 @@ public final class BattleScene: SKScene {
     /// Ends Blue's turn exactly as the Pass button does, for tests.
     public func simulatePass() {
         commit { $0.pass() }
+    }
+
+    /// Spends the selected tank's action with its planned move only, exactly
+    /// as the Wait button does, for tests.
+    public func simulateWait() {
+        commit { $0.wait() }
     }
 
     /// Whether the board is waiting on Red rather than on the player.

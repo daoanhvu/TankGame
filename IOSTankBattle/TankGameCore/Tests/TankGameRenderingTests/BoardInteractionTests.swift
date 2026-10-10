@@ -739,3 +739,90 @@ final class BoardInteractionInspectionTests: XCTestCase {
         XCTAssertNil(interaction.selectedTankID)
     }
 }
+
+
+/// A turn is one action per tank, so committing one tank's orders no longer
+/// ends the side's turn — the board has to stay with the player until every
+/// tank has had its go or they pass.
+final class BoardInteractionTurnTests: XCTestCase {
+
+    func testCommittingOneTankLeavesTheTurnWithThePlayer() throws {
+        var interaction = try makeInteraction([
+            tank(0, .player, .light, 0, 4),
+            tank(1, .player, .medium, 1, 4),
+            tank(2, .ai, .medium, 6, 0),
+        ])
+        XCTAssertEqual(interaction.pendingTankIDs, [0, 1])
+
+        interaction.tapTile(p(0, 4))          // select
+        interaction.tapTile(p(0, 3))          // point the move
+        interaction.wait()                    // commit
+
+        XCTAssertEqual(interaction.currentSide, .player, "Still Blue's turn")
+        XCTAssertTrue(interaction.acceptsInput)
+        XCTAssertEqual(interaction.pendingTankIDs, [1], "One tank left to command")
+        XCTAssertEqual(interaction.phase, .idle, "...and nothing selected, ready for the next")
+    }
+
+    func testTheSecondTankEndsTheTurn() throws {
+        var interaction = try makeInteraction([
+            tank(0, .player, .light, 0, 4),
+            tank(1, .player, .medium, 1, 4),
+            tank(2, .ai, .medium, 6, 0),
+        ])
+        interaction.tapTile(p(0, 4))
+        interaction.wait()
+        interaction.tapTile(p(1, 4))
+        interaction.wait()
+
+        XCTAssertEqual(interaction.currentSide, .ai)
+        XCTAssertTrue(interaction.pendingTankIDs.isEmpty == false, "Red's tanks are pending now")
+        XCTAssertEqual(interaction.pendingTankIDs, [2])
+    }
+
+    func testASpentTankCannotBeSelectedButCanStillBeInspected() throws {
+        var interaction = try makeInteraction([
+            tank(0, .player, .light, 0, 4),
+            tank(1, .player, .medium, 1, 4),
+            tank(2, .ai, .medium, 6, 0),
+        ])
+        interaction.tapTile(p(0, 4))
+        interaction.wait()
+
+        interaction.tapTile(p(0, 4))          // tap the tank that already moved
+        XCTAssertNil(interaction.selectedTankID, "Its go is spent")
+        XCTAssertEqual(interaction.inspectedTankID, 0, "...but the HUD still describes it")
+        XCTAssertFalse(interaction.canWait)
+    }
+
+    func testPassGivesUpTheRestOfTheTurn() throws {
+        var interaction = try makeInteraction([
+            tank(0, .player, .light, 0, 4),
+            tank(1, .player, .medium, 1, 4),
+            tank(2, .ai, .medium, 6, 0),
+        ])
+        interaction.tapTile(p(0, 4))
+        interaction.wait()
+        XCTAssertTrue(interaction.canPass)
+
+        interaction.pass()
+        XCTAssertEqual(interaction.currentSide, .ai)
+        XCTAssertEqual(interaction.state.tanks[1].position, p(1, 4), "The unused tank stayed put")
+    }
+
+    func testAttackingSpendsTheTankButNotTheTurn() throws {
+        var interaction = try makeInteraction([
+            tank(0, .player, .medium, 5, 0),
+            tank(1, .player, .light, 0, 4),
+            tank(2, .ai, .medium, 6, 0, hp: 4),
+        ])
+        interaction.tapTile(p(5, 0))          // select
+        interaction.tapTile(p(6, 0))          // aim at the enemy
+        XCTAssertTrue(interaction.canAttack)
+        interaction.attack()
+
+        XCTAssertFalse(interaction.state.tanks[2].isAlive, "Target destroyed")
+        XCTAssertEqual(interaction.currentSide, .player, "The light still owes an action")
+        XCTAssertEqual(interaction.pendingTankIDs, [1])
+    }
+}

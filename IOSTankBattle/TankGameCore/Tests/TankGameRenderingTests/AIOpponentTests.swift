@@ -77,7 +77,7 @@ final class AIOpponentTests: XCTestCase {
 
         // And asking for Red's move on Blue's turn does nothing at all.
         let before = interaction.state
-        XCTAssertTrue(interaction.takeAITurn(with: GreedyAI()).isEmpty)
+        XCTAssertTrue(interaction.takeAIAction(with: GreedyAI()).isEmpty)
         XCTAssertEqual(interaction.state, before)
     }
 
@@ -97,16 +97,36 @@ final class AIOpponentTests: XCTestCase {
 
     // MARK: Taking the turn
 
+    func testPlaysEveryOneOfItsTanksBeforeHandingTheBoardBack() throws {
+        // A turn is one action per tank, so one call to `takeAIAction` is one
+        // tank: the scene keeps calling while `isAITurn` holds.
+        var interaction = try makeInteraction([
+            tank(0, .player, .light, 0, 4),
+            tank(1, .ai, .light, 6, 0),
+            tank(2, .ai, .medium, 5, 0),
+            tank(3, .ai, .artillery, 4, 0),
+        ], currentSide: .ai)
+
+        var actions = 0
+        while interaction.isAITurn, actions < 10 {
+            interaction.takeAIAction(with: GreedyAI())
+            actions += 1
+        }
+
+        XCTAssertEqual(actions, 3, "One action per Red tank")
+        XCTAssertEqual(interaction.currentSide, .player)
+    }
+
     func testPlaysRedsTurnAndHandsTheBoardBack() throws {
         var interaction = try makeInteraction([
             tank(0, .player, .light, 0, 4),
             tank(1, .ai, .medium, 6, 0),
         ], currentSide: .ai)
 
-        let events = interaction.takeAITurn(with: GreedyAI())
+        let events = interaction.takeAIAction(with: GreedyAI())
 
         XCTAssertFalse(events.isEmpty, "The turn has to produce something to animate")
-        XCTAssertEqual(interaction.currentSide, .player)
+        XCTAssertEqual(interaction.currentSide, .player, "Red's only tank acted")
         XCTAssertFalse(interaction.isAITurn)
         XCTAssertTrue(interaction.acceptsInput)
         XCTAssertEqual(interaction.phase, .idle)
@@ -120,7 +140,7 @@ final class AIOpponentTests: XCTestCase {
         // Blue inspects a tank, then ends its turn; Red moves next.
         interaction.tapTile(p(6, 0))
         interaction.pass()
-        interaction.takeAITurn(with: GreedyAI())
+        interaction.takeAIAction(with: GreedyAI())
 
         XCTAssertNil(interaction.inspectedTankID)
         XCTAssertNil(interaction.describedTankID)
@@ -135,7 +155,7 @@ final class AIOpponentTests: XCTestCase {
         // Commanding Blue's tank on Red's turn: the rules reject it.
         let cheat = StubAI(answer: .command(TankCommand(tankID: 0, destination: p(0, 3))))
 
-        let events = interaction.takeAITurn(with: cheat)
+        let events = interaction.takeAIAction(with: cheat)
 
         XCTAssertEqual(events, [.passed(.ai), .turnBegan(.player, round: 2)])
         XCTAssertEqual(interaction.currentSide, .player, "The match has to move on")
@@ -154,19 +174,26 @@ final class AIOpponentTests: XCTestCase {
                                           map: try GameMap(ascii: Maps.crossing))
         var interaction = BoardInteraction(state: state, aiSide: .ai)
         let opponent = GreedyAI()
-        var turns = 0
+        var actions = 0
 
-        while !interaction.isOver, turns < 200 {
+        // A turn is now up to five actions a side, so the cap counts actions,
+        // not rounds: 40 rounds of five Red tanks and one Blue pass is ~240.
+        while !interaction.isOver, actions < 600 {
             if interaction.isAITurn {
-                XCTAssertFalse(interaction.takeAITurn(with: opponent).isEmpty)
+                // Not "produces events": a tank holding its position produces
+                // none. What has to be true is that the turn moved on.
+                let before = interaction.state
+                interaction.takeAIAction(with: opponent)
+                XCTAssertNotEqual(interaction.state, before,
+                                  "An action that changes nothing would loop forever")
             } else {
                 XCTAssertTrue(interaction.canPass)
                 interaction.pass()
             }
-            turns += 1
+            actions += 1
         }
 
-        XCTAssertTrue(interaction.isOver, "Stalled after \(turns) turns")
+        XCTAssertTrue(interaction.isOver, "Stalled after \(actions) actions")
         XCTAssertEqual(interaction.state.status, .finished(.win(.ai, .annihilation)))
         XCTAssertFalse(interaction.acceptsInput, "Nothing to tap once the match is over")
     }

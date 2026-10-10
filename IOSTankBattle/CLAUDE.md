@@ -13,7 +13,9 @@ The iOS app (milestone 2) will be an Xcode project that depends on both librarie
 - Game logic is fully separate from rendering. SpriteKit (milestone 2) only reads `GameState` and animates.
 - `GameState` is a value type (struct). The AI copies it to simulate futures; never introduce reference types into it.
 - All balance numbers live in `GameConfig` (JSON-loadable). Never hard-code stats in rules.
-- One turn = exactly one `Action`: `.pass` or `.command(TankCommand)` (one tank, optional move, optional attack).
+- One `Action` = one tank's orders: `.pass` or `.command(TankCommand)` (one tank, optional move, optional
+  attack). A TURN is one action per tank: the side keeps the board until every living tank has acted, or
+  until it passes. `GameState.actedThisTurn` is what remembers who has had their go.
 - Model types don't check legality; rules functions do (so the AI can generate candidates and filter them).
 - Every rule gets unit tests, especially edge cases.
 
@@ -45,8 +47,13 @@ The iOS app (milestone 2) will be an Xcode project that depends on both librarie
 - Staying on the tile does not refill again; the tank must leave and come back.
 
 **Turns and end of game**
+- A TURN of a side ends when every one of its living tanks has moved/attacked, or when that side passes.
+  Each tank acts exactly once per turn (`IllegalAction.tankAlreadyActed` otherwise); the player picks the
+  order by tapping. Passing gives up the rest of the turn, leaving unused tanks where they stand.
 - Player always moves first. Either side may pass.
-- One round = one player action + one AI action. Limit: 40 rounds.
+- One round = one player turn + one AI turn. Limit: 40 rounds — generous now that a round holds up to ten
+  tank actions: greedy-vs-greedy ends by annihilation around round 14, and against a passive player by
+  round 9, so the HP tie-break is rarely what decides a match.
 - Win: all enemy tanks destroyed.
 - At the round limit: the side with more total remaining HP wins (destroyed = 0 HP); equal HP = draw.
 
@@ -99,6 +106,12 @@ All of the above live in `Sources/TankGameCore/Rules.swift`. `Rules.apply` retur
 a `[GameEvent]` list (moved / resupplied / attacked / counterattacked / turnBegan / gameEnded) that the
 renderer replays as animations and the AI ignores.
 
+Two things about that list, both consequences of a turn being several actions:
+- `.turnBegan` fires only when the side actually changes, never between two tanks of the same side.
+- An action can produce NO events at all — a tank told to hold its position has nothing to animate. That is
+  not the same as the rules declining the action, and `BattleScene` tells them apart by whether the state
+  moved. Read an empty list as "nothing happened" and the board deadlocks mid-turn with input locked.
+
 Milestone 2 — SpriteKit board, hot-seat 2 players — DONE
 - [x] Render grid/tanks, all visuals via `SpriteCatalog` placeholders
 - [x] Tap-select → reachable tiles → move → targets → Attack/Wait
@@ -134,16 +147,20 @@ Milestone 3 — greedy AI
         + supply, all weights Codable like `GameConfig`. Exposure and approach are measured as a CHANGE from
         the tank's current tile, because one score ranks candidates across all five tanks.
       - `GreedyAI` (deterministic unless `weights.jitter` is set), `RandomAI` (the control group),
-        `AIMatch` (headless self-play: `play`, `tally`, and `takeTurn` as the reference for driving one AI turn).
+        `AIMatch` (headless self-play: `play`, `tally`, and `takeAction` as the reference for driving one
+        action of an AI turn).
 - [x] Wired into the board: the player commands Blue, the AI commands Red.
       - `BoardInteraction.aiSide` (nil = the milestone-2 hot seat) gates every input on `acceptsInput`, so a
-        tap can never spend Red's turn, and `takeAITurn(with:)` is the AI's way in — still the only place
-        that calls `Rules.apply`. An illegal action from a brain costs it its turn instead of wedging the match.
+        tap can never spend Red's turn, and `takeAIAction(with:)` is the AI's way in (ONE tank, called
+        again and again while `isAITurn` holds) — still the only place that calls `Rules.apply`. An illegal
+        action from a brain costs that tank its go instead of wedging the match.
       - `BattleScene.opponent` (default `GreedyAI()`, settable mid-match for a difficulty switch) and
-        `opponentDelay` (0.55s) — it schedules Red's turn after anything that could end Blue's, then animates
-        the events through the same path a tapped move uses. `isAcceptingInput` is the "ready for a tap"
-        signal; `isOpponentTurn` goes false while Red's move is still animating.
-      - The HUD status line reads "Red is moving…" and the command bar dims for the whole of Red's turn.
+        `opponentDelay` (0.3s, spent before EACH of Red's tanks) — it plays one of Red's actions after
+        anything that could end Blue's, then animates it through the same path a tapped move uses and comes
+        back for the next tank. `isAcceptingInput` is the "ready for a tap" signal; `isOpponentTurn` and the
+        round counter both go stale while Red's last move is still animating, so tests wait on the former.
+      - The HUD reads ROUND (not TURN — a round is two turns now), the status line counts the units still
+        awaiting orders, and tanks that have had their go are greyed out by `TankSprite.setSpent`.
       - `GameViewController` needed no change: the app links `TankGameAI` transitively through
         `TankGameRendering`, so there is nothing to add in Xcode.
 

@@ -18,7 +18,7 @@ public struct BoardInsets: Equatable, Sendable {
 /// The on-screen furniture, laid out as `docs/ScreenDesign.png` with one
 /// departure from it: a single unit card, above the field.
 ///
-///     OPERATION <name>                         TURN 08 / 40
+///     OPERATION <name>                        ROUND 08 / 40
 ///     [ unit card — whichever tank is in focus              ]
 ///     SECTOR C-4                        BLUE 39 · RED 39
 ///     ( the board )
@@ -148,7 +148,7 @@ public final class HUDNode: SKNode {
         operationLabel.position = CGPoint(x: 16, y: top - 35)
         topPanel.addChild(operationLabel)
 
-        theme.fieldLabelStyle.apply(to: turnTag, text: "turn")
+        theme.fieldLabelStyle.apply(to: turnTag, text: "round")
         turnTag.horizontalAlignmentMode = .right
         turnTag.verticalAlignmentMode = .center
         turnTag.position = CGPoint(x: sceneSize.width - 16, y: top - 15)
@@ -327,14 +327,22 @@ public final class HUDNode: SKNode {
         // Nothing the player can do during Red's turn, so say what is happening
         // instead of inviting a tap that will be swallowed.
         if interaction.isAITurn {
+            let left = interaction.pendingTankIDs.count
             return "\(interaction.currentSide.displayName) is moving…"
+                + (left > 1 ? "   ·   \(left) units to go" : "")
         }
 
         guard let preview = interaction.attackPreview,
               let targetID = interaction.aimedTargetID,
               let target = interaction.state.tank(targetID) else {
             guard let plan = interaction.plan else {
-                return "\(interaction.state.currentSide.displayName) to move — tap one of your tanks"
+                // A turn is one action per tank, so the count is the thing the
+                // player most needs: it is what says the turn is not over.
+                let left = interaction.pendingTankIDs.count
+                let side = interaction.state.currentSide.displayName
+                return left == 1
+                    ? "\(side) to move — 1 unit left, or pass to end the turn"
+                    : "\(side) to move — \(left) units awaiting orders"
             }
             // Once the tank has rolled out, the next tap on that tile is the one
             // that spends the turn, so say so.

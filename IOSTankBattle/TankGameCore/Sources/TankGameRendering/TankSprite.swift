@@ -132,6 +132,27 @@ public final class TankSprite: SKNode {
     /// art is painted and detailed, and that much transparency blends it into
     /// the terrain instead of reading as "not your turn".
     public func setDimmed(_ dimmed: Bool) {
-        alpha = dimmed ? 0.8 : 1.0
+        isDimmed = dimmed
+        refreshAlpha()
+    }
+
+    /// Marks a tank that has already had its go this turn.
+    ///
+    /// A turn is one action per tank, so the player needs to see at a glance
+    /// who is still waiting for orders — without this the board gives no way
+    /// to tell a tank that has moved from one that merely chose to hold its
+    /// position. Deeper than `setDimmed`, because "spent" has to read against
+    /// tanks of the same side standing next to it rather than against the
+    /// enemy.
+    public func setSpent(_ spent: Bool) {
+        isSpent = spent
+        refreshAlpha()
+    }
+
+    private var isDimmed = false
+    private var isSpent = false
+
+    private func refreshAlpha() {
+        alpha = isSpent ? 0.45 : (isDimmed ? 0.8 : 1.0)
     }
 }

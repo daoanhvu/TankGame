@@ -99,6 +99,7 @@ public final class BoardNode: SKNode {
             guard let sprite = tankSprites[tank.id] else { continue }
             sprite.update(tank: tank, stats: state.stats(of: tank))
             sprite.setDimmed(tank.side != state.currentSide)
+            sprite.setSpent(tank.side == state.currentSide && state.hasActed(tank.id))
 
             let isDriving = sprite.action(forKey: Self.driveKey) != nil
             if !isDriving && tank.id != previewed {

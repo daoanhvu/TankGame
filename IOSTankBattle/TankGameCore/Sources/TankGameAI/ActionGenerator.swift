@@ -1,11 +1,11 @@
 import TankGameCore
 
-/// Every legal action one side could take this turn.
+/// Every legal action one side could take right now.
 ///
 /// The rules deliberately do not check legality in the model types, so this is
-/// where "what could I do?" lives: for each living tank, every tile it may stop
-/// on, and from each of those tiles every enemy it could hit, plus the option
-/// of holding fire. Each candidate carries the pieces the evaluator would
+/// where "what could I do?" lives: for each living tank that has not yet had
+/// its go this turn, every tile it may stop on, and from each of those tiles
+/// every enemy it could hit, plus the option of holding fire. Each candidate carries the pieces the evaluator would
 /// otherwise have to recompute.
 ///
 /// Branching on the phase-1 map is small — 5 tanks x ~20 tiles x ~3 shooting
@@ -14,6 +14,10 @@ import TankGameCore
 public enum ActionGenerator {
 
     /// One thing a side could do, with the context needed to score it.
+    ///
+    /// `.pass` gives up the whole rest of the turn, every tank still waiting
+    /// for orders included — which is why it is nearly always dominated by
+    /// holding one tank in position and carrying on.
     public struct Candidate: Equatable, Sendable {
         public let action: Action
         /// The acting tank, as it stands BEFORE the action. Nil for `.pass`.
@@ -41,7 +45,10 @@ public enum ActionGenerator {
         let side = state.currentSide
         var result: [Candidate] = []
 
-        for tank in state.aliveTanks(of: side).sorted(by: { $0.id < $1.id }) {
+        // One action per tank per turn, so a tank that has already moved is
+        // not a candidate — it is the shrinking of this list, action by
+        // action, that ends the side's turn.
+        for tank in state.pendingTanks(of: side).sorted(by: { $0.id < $1.id }) {
             let tiles = Rules.reachableTiles(for: tank, in: state).keys.sorted(by: readingOrder)
 
             for tile in tiles {

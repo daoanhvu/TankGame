@@ -125,8 +125,15 @@ public struct BoardInteraction: Equatable {
         return nil
     }
 
-    /// "Wait" ends the turn with the move only; always available once a tank is
-    /// selected, including when it has not moved (a deliberate skip).
+    /// Tanks of the side to move that have not had their go yet. The board
+    /// greys out the rest.
+    public var pendingTankIDs: [TankID] {
+        state.pendingTanks(of: currentSide).map(\.id)
+    }
+
+    /// "Wait" spends this tank's action with the move only; always available
+    /// once a tank is selected, including when it has not moved (a deliberate
+    /// skip). The side's turn carries on with whatever tanks are left.
     public var canWait: Bool {
         guard acceptsInput else { return false }
         return plan != nil
@@ -210,7 +217,8 @@ public struct BoardInteraction: Equatable {
                                   targetID: targetID))
     }
 
-    /// Ends the turn without doing anything.
+    /// Gives up the rest of the side's turn, leaving every tank still waiting
+    /// for orders where it stands.
     @discardableResult
     public mutating func pass() -> [GameEvent] {
         guard acceptsInput else { return [] }
@@ -221,10 +229,14 @@ public struct BoardInteraction: Equatable {
         return result.events
     }
 
-    /// Asks `ai` for the AI side's action and applies it. Does nothing on a
-    /// human turn, so the scene can call it whenever it is unsure.
+    /// Asks `ai` for one action and applies it. Does nothing on a human turn,
+    /// so the scene can call it whenever it is unsure.
+    ///
+    /// One action, not the whole turn: a turn is every tank of a side acting,
+    /// and the scene wants to animate them one at a time. It keeps calling
+    /// this while `isAITurn` holds.
     @discardableResult
-    public mutating func takeAITurn(with ai: TankAI) -> [GameEvent] {
+    public mutating func takeAIAction(with ai: TankAI) -> [GameEvent] {
         guard isAITurn else { return [] }
         return apply(ai.chooseAction(in: state))
     }
@@ -267,9 +279,12 @@ public struct BoardInteraction: Equatable {
     // MARK: - Internals
 
     private mutating func select(tankAt tile: Position) {
-        guard let tank = state.tank(at: tile), tank.side == currentSide else {
+        // A tank that has already had its go this turn is no longer an option,
+        // but tapping it should still say what it is rather than do nothing.
+        guard let tank = state.tank(at: tile),
+              tank.side == currentSide,
+              !state.hasActed(tank.id) else {
             phase = .idle
-            // Nothing selectable here, but an enemy tank is still worth a look.
             inspectedTankID = state.tank(at: tile).flatMap { $0.isAlive ? $0.id : nil }
             return
         }
