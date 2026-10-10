@@ -1,4 +1,5 @@
 import TankGameCore
+import TankGameAI
 
 /// The tap-driven turn flow, as a pure state machine:
 ///
@@ -10,8 +11,10 @@ import TankGameCore
 /// scene never has to reason about rules. No SpriteKit here on purpose: the
 /// whole flow is unit-testable.
 ///
-/// Hot-seat (milestone 2): both sides are human, so whoever `state.currentSide`
-/// says it is gets to pick a tank.
+/// With `aiSide` set (milestone 3), the tap flow stops accepting input on that
+/// side's turn and the scene hands it to a `TankAI` instead. Left nil it is
+/// still the hot-seat machine from milestone 2, where whoever
+/// `state.currentSide` says it is gets to pick a tank.
 public struct BoardInteraction: Equatable {
 
     /// A move being planned. The tank has NOT moved; `destination` is where the
@@ -37,6 +40,13 @@ public struct BoardInteraction: Equatable {
     public private(set) var state: GameState
     public private(set) var phase: Phase = .idle
 
+    /// The side a `TankAI` plays, or nil for hot seat.
+    ///
+    /// This is what stops the player from tapping out the opponent's turn
+    /// while it is thinking: every input the flow accepts is gated on
+    /// `acceptsInput`, not merely on whose turn it is.
+    public var aiSide: Side?
+
     /// The tank the player last tapped to look at rather than to act on.
     ///
     /// Both sides share one hull per side, so the board cannot say which kind a
@@ -45,14 +55,21 @@ public struct BoardInteraction: Equatable {
     /// what it is. Purely informational: it never affects what an action does.
     public private(set) var inspectedTankID: TankID?
 
-    public init(state: GameState) {
+    public init(state: GameState, aiSide: Side? = nil) {
         self.state = state
+        self.aiSide = aiSide
     }
 
     // MARK: - What the renderer needs to draw
 
     public var currentSide: Side { state.currentSide }
     public var isOver: Bool { state.isOver }
+
+    /// True while the AI owes the game an action.
+    public var isAITurn: Bool { !isOver && currentSide == aiSide }
+
+    /// Whether a tap or a command button means anything right now.
+    public var acceptsInput: Bool { !isOver && !isAITurn }
 
     public var plan: MovePlan? {
         switch phase {
@@ -111,16 +128,16 @@ public struct BoardInteraction: Equatable {
     /// "Wait" ends the turn with the move only; always available once a tank is
     /// selected, including when it has not moved (a deliberate skip).
     public var canWait: Bool {
-        guard !isOver else { return false }
+        guard acceptsInput else { return false }
         return plan != nil
     }
 
     public var canAttack: Bool {
-        guard !isOver else { return false }
+        guard acceptsInput else { return false }
         return aimedTargetID != nil
     }
 
-    public var canPass: Bool { !isOver }
+    public var canPass: Bool { acceptsInput }
 
     // MARK: - Input
 
@@ -128,7 +145,7 @@ public struct BoardInteraction: Equatable {
     /// animate, which is empty for every tap that only changes the selection.
     @discardableResult
     public mutating func tapTile(_ tile: Position) -> [GameEvent] {
-        guard !isOver else { return [] }
+        guard acceptsInput else { return [] }
 
         guard let plan else {
             select(tankAt: tile)
@@ -181,14 +198,14 @@ public struct BoardInteraction: Equatable {
     /// Commits the planned move without firing.
     @discardableResult
     public mutating func wait() -> [GameEvent] {
-        guard let plan, !isOver else { return [] }
+        guard let plan, acceptsInput else { return [] }
         return commit(TankCommand(tankID: plan.tankID, destination: plan.destination))
     }
 
     /// Commits the planned move and the attack on the aimed target.
     @discardableResult
     public mutating func attack() -> [GameEvent] {
-        guard case .aiming(let plan, let targetID, _) = phase, !isOver else { return [] }
+        guard case .aiming(let plan, let targetID, _) = phase, acceptsInput else { return [] }
         return commit(TankCommand(tankID: plan.tankID, destination: plan.destination,
                                   targetID: targetID))
     }
@@ -196,12 +213,38 @@ public struct BoardInteraction: Equatable {
     /// Ends the turn without doing anything.
     @discardableResult
     public mutating func pass() -> [GameEvent] {
-        guard !isOver else { return [] }
+        guard acceptsInput else { return [] }
         phase = .idle
         inspectedTankID = nil
         guard let result = try? Rules.apply(.pass, to: state) else { return [] }
         state = result.state
         return result.events
+    }
+
+    /// Asks `ai` for the AI side's action and applies it. Does nothing on a
+    /// human turn, so the scene can call it whenever it is unsure.
+    @discardableResult
+    public mutating func takeAITurn(with ai: TankAI) -> [GameEvent] {
+        guard isAITurn else { return [] }
+        return apply(ai.chooseAction(in: state))
+    }
+
+    /// Applies an action that did not come from a tap — the AI's.
+    ///
+    /// Falls back to `.pass` if the rules reject it: a brain with a bug must
+    /// cost the opponent its turn, not wedge the match with no way forward.
+    @discardableResult
+    public mutating func apply(_ action: Action) -> [GameEvent] {
+        guard !isOver else { return [] }
+        phase = .idle
+        inspectedTankID = nil
+        if let result = try? Rules.apply(action, to: state) {
+            state = result.state
+            return result.events
+        }
+        guard let fallback = try? Rules.apply(.pass, to: state) else { return [] }
+        state = fallback.state
+        return fallback.events
     }
 
     /// Drops the whole selection, from any stage. Since tapping the board no

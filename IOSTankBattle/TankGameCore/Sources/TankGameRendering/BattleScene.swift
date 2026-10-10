@@ -1,17 +1,37 @@
 import SpriteKit
 import TankGameCore
+import TankGameAI
 
-/// The playable board (milestone 2): hot-seat, two humans sharing one device.
+/// The playable board: the player commands Blue, a `TankAI` commands Red.
+/// Pass `opponent: nil` for the milestone-2 hot seat, where both sides take
+/// taps from the same device.
 ///
 /// It is a thin shell. `BoardInteraction` holds the game and the tap flow,
 /// `BoardNode` draws and animates, `HUDNode` reports and offers the buttons.
-/// The scene's own job is routing input and blocking it while animating.
+/// The scene's own job is routing input, blocking it while animating, and
+/// giving the opponent a beat to "think" so its turn reads as a move rather
+/// than a jump cut.
 @MainActor
 public final class BattleScene: SKScene {
 
     private let catalog: SpriteCatalog
     private let theme: BoardTheme
     private let newGame: () throws -> GameState
+
+    /// The brain playing Red, or nil for hot seat. Swap it for a difficulty
+    /// setting; the match keeps whatever state it is in.
+    public var opponent: TankAI? {
+        didSet {
+            interaction.aiSide = opponent == nil ? nil : .ai
+            guard board != nil else { return }
+            refresh()
+            advanceAIIfNeeded()
+        }
+    }
+
+    /// How long Red appears to think before its move plays. Short enough not
+    /// to feel laggy, long enough that the player sees whose turn it is.
+    public var opponentDelay: TimeInterval = 0.55
 
     private var interaction: BoardInteraction
     private var board: BoardNode!
@@ -24,13 +44,17 @@ public final class BattleScene: SKScene {
     /// True while events are animating, when taps are ignored.
     private var isAnimating = false
 
+    /// True from the moment Red's turn is scheduled until its action has been
+    /// applied. Input stays locked for the whole of it, including the delay.
+    private var isOpponentThinking = false
+
     /// True while a tank is rolling to a planned tile. A turn-based game should
     /// not let the player change their mind halfway through a move, so input is
     /// locked until it arrives.
     private var isDriving = false
 
     /// Whether the board is busy and should swallow input.
-    private var isBusy: Bool { isAnimating || isDriving }
+    private var isBusy: Bool { isAnimating || isDriving || isOpponentThinking }
 
     /// The tank currently standing on a planned tile rather than its real one,
     /// and the route it took to get there (starting at its real tile).
@@ -63,11 +87,14 @@ public final class BattleScene: SKScene {
                 tileSize: CGFloat = 64,
                 theme: BoardTheme = .standard,
                 catalog: SpriteCatalog? = nil,
+                opponent: TankAI? = GreedyAI(),
                 newGame: @escaping () throws -> GameState) throws {
         self.catalog = catalog ?? SpriteCatalog(tileSize: tileSize)
         self.theme = theme
         self.newGame = newGame
-        self.interaction = BoardInteraction(state: try newGame())
+        self.opponent = opponent
+        self.interaction = BoardInteraction(state: try newGame(),
+                                            aiSide: opponent == nil ? nil : .ai)
         super.init(size: size)
 
         scaleMode = .resizeFill
@@ -80,8 +107,9 @@ public final class BattleScene: SKScene {
                             map ascii: String = Maps.crossing,
                             config: GameConfig = .phase1Default,
                             tileSize: CGFloat = 64,
-                            theme: BoardTheme = .standard) throws {
-        try self.init(size: size, tileSize: tileSize, theme: theme) {
+                            theme: BoardTheme = .standard,
+                            opponent: TankAI? = GreedyAI()) throws {
+        try self.init(size: size, tileSize: tileSize, theme: theme, opponent: opponent) {
             try GameState.newGame(config: config, map: try GameMap(ascii: ascii))
         }
     }
@@ -127,6 +155,9 @@ public final class BattleScene: SKScene {
 
         layoutBoard()
         refresh()
+        // Covers a config whose `firstSide` is the AI: the player should not
+        // have to tap something to make the opponent open the match.
+        advanceAIIfNeeded()
     }
 
     public override func didChangeSize(_ oldSize: CGSize) {
@@ -226,11 +257,59 @@ public final class BattleScene: SKScene {
             self.isAnimating = false
             self.hud.setBusy(false)
             self.refresh()
+            // Red's turn follows the player's, and the player's follows Red's
+            // reply: one place to hand over, whichever side just acted.
+            self.advanceAIIfNeeded()
         }
     }
 
+    // MARK: - Red's turn
+
+    /// Hands the turn to the opponent if it is owed one, after a beat.
+    ///
+    /// Safe to call after anything: it is a no-op on a human turn, once the
+    /// match is over, or while the board is already busy — the thing that was
+    /// busy calls it again when it finishes.
+    private func advanceAIIfNeeded() {
+        guard let opponent, interaction.isAITurn,
+              !isOpponentThinking, !isAnimating, !isDriving else { return }
+
+        isOpponentThinking = true
+        hud.setBusy(true)
+        board.clearHighlights()
+        board.setSelectedTank(nil)
+        board.setInspectedTank(nil)
+        hud.update(with: interaction)      // the status line says Red is moving
+
+        run(.sequence([
+            .wait(forDuration: opponentDelay),
+            .run { [weak self] in
+                guard let self else { return }
+                self.isOpponentThinking = false
+                let events = self.interaction.takeAITurn(with: opponent)
+                // `takeAITurn` falls back to passing rather than returning
+                // nothing, so an empty list here means the turn was not Red's
+                // after all; redrawing is the whole of the recovery.
+                guard !events.isEmpty else {
+                    self.refresh()
+                    return
+                }
+                self.present(events)
+            },
+        ]), withKey: Self.opponentTurnKey)
+    }
+
+    /// Drops a scheduled opponent turn, for a rematch mid-think.
+    private func cancelScheduledAITurn() {
+        removeAction(forKey: Self.opponentTurnKey)
+        isOpponentThinking = false
+    }
+
+    private static let opponentTurnKey = "opponentTurn"
+
     private func startNewMatch() {
         guard let state = try? newGame() else { return }
+        cancelScheduledAITurn()
         isDriving = false
         previewTankID = nil
         previewRoute = []
@@ -238,6 +317,7 @@ public final class BattleScene: SKScene {
         gameOver.hide()
         board.sync(with: state)
         refresh()
+        advanceAIIfNeeded()
     }
 
     // MARK: - Drawing the current state
@@ -352,6 +432,22 @@ public final class BattleScene: SKScene {
     public func simulateTap(onTile tile: Position) {
         tapBoard(tile)
     }
+
+    /// Ends Blue's turn exactly as the Pass button does, for tests.
+    public func simulatePass() {
+        commit { $0.pass() }
+    }
+
+    /// Whether the board is waiting on Red rather than on the player.
+    ///
+    /// Note that this goes false the moment Red's action is applied, while its
+    /// move is still animating — use `isAcceptingInput` to know when the board
+    /// is ready for a tap.
+    public var isOpponentTurn: Bool { interaction.isAITurn }
+
+    /// Whether a tap would do anything right now: the match is live, nothing is
+    /// animating, and the board is not waiting on Red.
+    public var isAcceptingInput: Bool { !isBusy && !interaction.isOver }
 }
 
 extension Array where Element == GameEvent {

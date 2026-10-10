@@ -1,9 +1,11 @@
 # Tank Strategy Game — Project Context
 
 Solo-developed iOS turn-based strategy game: player vs AI, 5 tanks per side, on a 2D grid.
-This Swift package has two library targets:
+This Swift package has three library targets:
 - `TankGameCore`: the pure-Swift rules engine. It must NOT import UIKit, AppKit or SpriteKit.
 - `TankGameRendering`: SpriteKit-facing helpers (`AssetName`, `SpriteCatalog`). Depends on the core, never the reverse.
+- `TankGameAI`: the opponent's brain. Depends on the core only — never on the renderer, and the core never
+  depends on it — so a smarter brain can replace it without touching the rules or the board.
 
 The iOS app (milestone 2) will be an Xcode project that depends on both libraries.
 
@@ -109,8 +111,10 @@ The scene code is in `TankGameRendering` (not the app target) so it is unit-test
 - `BoardNode` / `TankSprite` — drawing and event animations. `BoardLayout` converts grid ↔ points
   (the model's y grows DOWN, SpriteKit's grows UP, so every conversion flips y).
 - `HUDNode`, `UnitCardNode`, `ButtonNode`, `CommandIcons`, `GameOverNode`, `BoardFrameNode` — the
-  chrome, all drawn in code, following `docs/ScreenDesign.png`: operation/turn header, a unit card per
-  side, the sector strip, the status line and the segmented command bar. `BoardTheme` holds every color
+  chrome, all drawn in code, following `docs/ScreenDesign.png`: operation/turn header, one unit card
+  above the field for either side, the sector strip, the status line and the segmented command bar
+  (the design's second card is gone; one shared card describes whichever tank is in focus, and the
+  stripe down its edge says whose it is). `BoardTheme` holds every color
   and `TextStyle`/`BoardFonts` the type (condensed caps, with a fallback chain for devices missing the
   face).
 - `TankAtlas` / `TankSkin` — tank art from `IOSTankBattle/Art/tank_atlas.{png,json}`; blue for the
@@ -118,8 +122,51 @@ The scene code is in `TankGameRendering` (not the app target) so it is unit-test
 - `BattleScene` — routes taps and blocks input while animating.
 The app's `GameViewController` just presents `BattleScene` and feeds it the safe-area insets.
 
-Milestone 3 — greedy AI: enumerate all legal actions incl. pass; score = damage dealt + kill bonus − counter damage
-taken − exposure (threat map) + approach-enemy term + bonus for damaged tank heading to supply; readable delay/animation.
+Milestone 3 — greedy AI
+- [x] Engine in `TankGameAI`, behind the `TankAI` protocol (`chooseAction(in:) -> Action`), the one seam every
+      later brain implements:
+      - `ActionGenerator` — every legal action incl. pass, in a stable order (reachable tiles come out of a
+        dictionary, so without sorting the AI would pick different equal-scoring moves on different runs).
+      - `ThreatMap` — where each enemy could drive and shoot next turn. `strongestShot(at:)` is the real
+        one-turn risk (a side gets ONE action); `damage(at:)` sums every gun that bears and is only a
+        "how contested is this ground" hint.
+      - `GreedyEvaluator` + `AIWeights` — score = damage + kill bonus − counter damage − exposure + approach
+        + supply, all weights Codable like `GameConfig`. Exposure and approach are measured as a CHANGE from
+        the tank's current tile, because one score ranks candidates across all five tanks.
+      - `GreedyAI` (deterministic unless `weights.jitter` is set), `RandomAI` (the control group),
+        `AIMatch` (headless self-play: `play`, `tally`, and `takeTurn` as the reference for driving one AI turn).
+- [x] Wired into the board: the player commands Blue, the AI commands Red.
+      - `BoardInteraction.aiSide` (nil = the milestone-2 hot seat) gates every input on `acceptsInput`, so a
+        tap can never spend Red's turn, and `takeAITurn(with:)` is the AI's way in — still the only place
+        that calls `Rules.apply`. An illegal action from a brain costs it its turn instead of wedging the match.
+      - `BattleScene.opponent` (default `GreedyAI()`, settable mid-match for a difficulty switch) and
+        `opponentDelay` (0.55s) — it schedules Red's turn after anything that could end Blue's, then animates
+        the events through the same path a tapped move uses. `isAcceptingInput` is the "ready for a tap"
+        signal; `isOpponentTurn` goes false while Red's move is still animating.
+      - The HUD status line reads "Red is moving…" and the command bar dims for the whole of Red's turn.
+      - `GameViewController` needed no change: the app links `TankGameAI` transitively through
+        `TankGameRendering`, so there is nothing to add in Xcode.
+
+Three tuning traps, all covered by regression tests in `TankGameAITests` — mind them when rebalancing. The
+sharpest single check is `testFinishesOffAPlayerThatNeverMoves`: against five stationary tanks the AI has to
+win by annihilation inside the round limit, and every one of these bugs showed up there as a win on HP.
+- Price exposure anywhere near `approachBonus` and two brains advance to the edge of each other's range and
+  stop, because every step into contact costs more than the ground it wins: a 40-round draw at full HP.
+  Exposure picks the quieter of two similar tiles; `lethalExposurePenalty` (symmetric: entering and escaping)
+  is the only brake allowed to stop a tank, and it only trips for one a single shot could kill.
+- Pay the supply bonus only on arrival and a wounded tank three tiles from the depot never sets off, so it
+  parks for the rest of the match. `supplyApproachBonus` pays for the ground covered, scaled by how badly
+  the tank needs the trip.
+- Measure "closer to the enemy" as the crow flies and the whole army parks on the near bank of the river:
+  every detour round the water reads as zero progress. Approach and the supply pull both follow
+  `DistanceField`, a Dijkstra flood with the same terrain costs as movement.
+- Price the counterattack at parity (`counterDamage` 1.0) and the AI sits on a winning position refusing to
+  fire, because every opening trade a light can make against a medium is 3 out for 4 back and one ply cannot
+  see the teammate who finishes the target next turn. It is 0.7: a point dealt is worth a little more than a
+  point taken, with `lossPenalty` and `lethalExposurePenalty` as the brakes on actually throwing tanks away.
+
+Known limits of one ply: it can be baited (it chases a tank parked just outside artillery range), and a
+wounded tank will shuttle between the front and a full-heal depot. Both are the search depth, not the weights.
 
 Milestone 4 — polish: import Kenney Top-down Tanks Redux into Assets.xcassets with `AssetName` names
 (until `missingRequiredAssets()` is empty), app icon, animations, damage numbers, sound, 2–3 maps + map select,
@@ -129,3 +176,5 @@ Later: 2-ply minimax with alpha-beta; difficulty levels; possibly self-play RL e
 
 ## Commands
 - `swift test` — run all tests (on macOS; `TankGameRendering` needs SpriteKit, so it won't build on Linux). Keep them green before marking a task done, and update the checklist above.
+  If it reports `no such module 'XCTest'`, the shell is on the Command Line Tools toolchain, which has no
+  XCTest: run `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test` (or `sudo xcode-select -s`).

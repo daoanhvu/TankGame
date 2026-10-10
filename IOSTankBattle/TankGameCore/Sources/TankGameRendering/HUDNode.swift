@@ -15,15 +15,19 @@ public struct BoardInsets: Equatable, Sendable {
     public static let zero = BoardInsets()
 }
 
-/// The on-screen furniture, laid out as `docs/ScreenDesign.png`:
+/// The on-screen furniture, laid out as `docs/ScreenDesign.png` with one
+/// departure from it: a single unit card, above the field.
 ///
 ///     OPERATION <name>                         TURN 08 / 40
-///     [ hostile unit card                                 ]
+///     [ unit card — whichever tank is in focus              ]
 ///     SECTOR C-4                        BLUE 39 · RED 39
 ///     ( the board )
-///     [ friendly unit card                                ]
 ///     · awaiting command
 ///     [ attack | wait | cancel | pass ]
+///
+/// The design draws a card per side, but one card says the same thing and hands
+/// the field 66pt back: the stripe down its edge is coloured from the tank, so
+/// friendly and hostile never needed separate boxes.
 ///
 /// It only reads a `BoardInteraction`; the scene wires the commands up.
 /// Positioned in scene coordinates with the scene's origin at the bottom-left.
@@ -63,8 +67,10 @@ public final class HUDNode: SKNode {
     private let totalsLabel = SKLabelNode()
     private let statusDot = SKShapeNode(circleOfRadius: 3)
     private let statusLabel = SKLabelNode()
-    private var hostileCard: UnitCardNode!
-    private var friendlyCard: UnitCardNode!
+    /// Fed whatever `BoardInteraction.describedTankID` names: the player's own
+    /// selection, an enemy they tapped to look at, or the tank they are aiming
+    /// at — either side.
+    private(set) var unitCard: UnitCardNode!
     private var buttons: [ButtonNode] = []
 
     // Heights of the stacked pieces. Chrome is generous on purpose: the board
@@ -97,7 +103,7 @@ public final class HUDNode: SKNode {
         insets.top + topBarHeight + cardHeight + sectorHeight + margin
     }
     public var bottomInset: CGFloat {
-        insets.bottom + commandHeight + statusHeight + cardHeight + margin
+        insets.bottom + commandHeight + statusHeight + margin
     }
 
     public func resize(to size: CGSize, insets: BoardInsets? = nil) {
@@ -157,12 +163,12 @@ public final class HUDNode: SKNode {
         turnNumber.verticalAlignmentMode = .center
         topPanel.addChild(turnNumber)
 
-        // The hostile card: whatever the side to move is looking at.
-        hostileCard = UnitCardNode(
+        // The one unit card: whatever is in focus, friendly or hostile.
+        unitCard = UnitCardNode(
             size: CGSize(width: sceneSize.width - margin * 2, height: cardHeight),
-            role: .hostile, catalog: catalog, theme: theme)
-        hostileCard.position = CGPoint(x: margin, y: top - topBarHeight - cardHeight)
-        topPanel.addChild(hostileCard)
+            catalog: catalog, theme: theme)
+        unitCard.position = CGPoint(x: margin, y: top - topBarHeight - cardHeight)
+        topPanel.addChild(unitCard)
 
         // The strip between the chrome and the field.
         let stripY = sceneSize.height - topInset
@@ -187,15 +193,6 @@ public final class HUDNode: SKNode {
         panel.position = CGPoint(x: sceneSize.width / 2, y: height / 2)
         bottomPanel.addChild(panel)
         bottomPanel.addChild(hairline(atY: height, width: sceneSize.width))
-
-        // The friendly card sits directly under the field.
-        friendlyCard = UnitCardNode(
-            size: CGSize(width: sceneSize.width - margin * 2, height: cardHeight),
-            role: .friendly, catalog: catalog, theme: theme)
-        friendlyCard.position = CGPoint(
-            x: margin,
-            y: insets.bottom + commandHeight + statusHeight)
-        bottomPanel.addChild(friendlyCard)
 
         // Status line: what the game is waiting for, or the damage preview.
         let statusY = insets.bottom + commandHeight + statusHeight / 2
@@ -288,19 +285,13 @@ public final class HUDNode: SKNode {
         turnNumber.position = CGPoint(x: turnDivisor.position.x - turnDivisor.frame.width - 5,
                                       y: turnDivisor.position.y)
 
-        let described = interaction.describedTankID.flatMap { state.tank($0) }
-
-        // The side to move gets the bottom card, whatever it is looking at the
-        // top one — so in hot-seat the cards swap round with the turn.
-        let friendly = interaction.selectedTankID.flatMap { state.tank($0) }
-            ?? described.flatMap { $0.side == state.currentSide ? $0 : nil }
-        let hostile = described.flatMap { $0.side == state.currentSide ? nil : $0 }
-
-        friendlyCard.show(tank: friendly, stats: friendly.map(state.stats(of:)), in: state)
-        hostileCard.show(tank: hostile, stats: hostile.map(state.stats(of:)), in: state)
+        // One card, either side. `describedTankID` already ranks the
+        // candidates — aimed target, then inspected tank, then the selection —
+        // so the card needs no rule of its own about whose tank it may show.
+        let focus = interaction.describedTankID.flatMap { state.tank($0) }
+        unitCard.show(tank: focus, stats: focus.map(state.stats(of:)), in: state)
 
         // The strip: where the unit in focus is standing, and who is ahead.
-        let focus = described ?? friendly
         theme.fieldLabelStyle.apply(
             to: sectorLabel,
             text: focus.map { "sector \(Self.sector(of: $0.position))" } ?? "sector —")
@@ -333,6 +324,11 @@ public final class HUDNode: SKNode {
     /// What the game is waiting for, or the damage the player is about to deal.
     private func statusText(for interaction: BoardInteraction) -> String {
         if case .finished = interaction.state.status { return "Match over" }
+        // Nothing the player can do during Red's turn, so say what is happening
+        // instead of inviting a tap that will be swallowed.
+        if interaction.isAITurn {
+            return "\(interaction.currentSide.displayName) is moving…"
+        }
 
         guard let preview = interaction.attackPreview,
               let targetID = interaction.aimedTargetID,

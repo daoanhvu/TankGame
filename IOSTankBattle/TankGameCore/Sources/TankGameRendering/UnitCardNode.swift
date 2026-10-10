@@ -5,20 +5,15 @@ import TankGameCore
 /// portrait, the unit's name and range, an HP bar with the numbers, and the two
 /// figures a player actually decides on — damage per shot and shells left.
 ///
-/// There are two on screen, the side to move at the bottom and whatever it is
-/// looking at on top, which is how a shared hull per side stops being
-/// confusing (`docs/sprite_design.md` D2).
+/// There is one on screen, above the field, and it describes either side: the
+/// stripe down its edge is coloured from the tank it is showing, which is how a
+/// shared hull per side stops being confusing (`docs/sprite_design.md` D2).
 ///
 /// The design's LVL and AMMO TYPE fields have no counterpart in this game, so
 /// those slots carry range and damage instead rather than inventing mechanics.
 @MainActor
 public final class UnitCardNode: SKNode {
 
-    /// Which way the card's content reads; both look the same, but the side
-    /// stripe and the empty-state wording differ.
-    public enum Role { case friendly, hostile }
-
-    public let role: Role
     public private(set) var size: CGSize
 
     private let theme: BoardTheme
@@ -40,9 +35,10 @@ public final class UnitCardNode: SKNode {
     private let emptyLabel = SKLabelNode()
 
     /// Which tank is currently drawn, so the portrait is only rebuilt when it
-    /// actually changes — `update` runs on every tap.
-    private var shownKind: TankKind?
-    private var shownSide: Side?
+    /// actually changes — `update` runs on every tap. Also what the tests read
+    /// to ask the card who it is describing.
+    private(set) var shownKind: TankKind?
+    private(set) var shownSide: Side?
 
     private let inset: CGFloat = 10
     private let gap: CGFloat = 10
@@ -53,9 +49,8 @@ public final class UnitCardNode: SKNode {
     private var barStart: CGFloat { textLeft + 22 }
     private var barWidth: CGFloat { max(textRight - 48 - barStart, 10) }
 
-    public init(size: CGSize, role: Role, catalog: SpriteCatalog, theme: BoardTheme) {
+    public init(size: CGSize, catalog: SpriteCatalog, theme: BoardTheme) {
         self.size = size
-        self.role = role
         self.theme = theme
         self.catalog = catalog
 
@@ -230,8 +225,7 @@ public final class UnitCardNode: SKNode {
 
         emptyLabel.isHidden = false
         theme.fieldLabelStyle.colored(theme.hudMutedText)
-            .apply(to: emptyLabel,
-                   text: role == .friendly ? "no unit selected" : "no target")
+            .apply(to: emptyLabel, text: "no unit selected")
     }
 
     /// The tank's own art, scaled to fit the portrait box. Goes through the
