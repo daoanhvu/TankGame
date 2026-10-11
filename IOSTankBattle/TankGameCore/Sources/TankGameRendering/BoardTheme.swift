@@ -46,6 +46,9 @@ public struct BoardTheme: Sendable {
     public var hpBarLowFill = SKColor(red: 0.88, green: 0.45, blue: 0.22, alpha: 1.00)
     public var ammoPip = SKColor(red: 0.91, green: 0.87, blue: 0.75, alpha: 0.95)
     public var ammoPipEmpty = SKColor(white: 1.0, alpha: 0.20)
+    /// Tile lines drawn over a map's own art: just enough to count tiles by,
+    /// not enough to cover the art.
+    public var mapArtGridLine = SKColor(white: 0.0, alpha: 0.16)
 
     // MARK: - Scene and frame
 

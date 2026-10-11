@@ -215,6 +215,22 @@ public final class SpriteCatalog {
         return shape
     }
 
+    /// A Tiled map's layers drawn as one sprite over the whole board, anchored
+    /// at its bottom-left corner like the board itself. The tileset images are
+    /// `AssetName.tileset`s. Nil when any of them is missing, in which case the
+    /// board draws `terrainNode`s instead.
+    public func mapArtNode(for map: TiledMap, boardSize: CGSize) -> SKNode? {
+        let art = TiledArt.compose(map) { tileset in
+            Self.loadImage(named: AssetName.tileset(tileset.name), in: bundle)
+                .flatMap(TankAtlas.cgImage(of:))
+        }
+        guard let art else { return nil }
+        let sprite = SKSpriteNode(texture: SKTexture(cgImage: art), size: boardSize)
+        sprite.anchorPoint = .zero
+        sprite.name = NodeName.body
+        return sprite
+    }
+
     /// An overlay drawn on top of the supply tile's open-ground terrain.
     public func supplyNode(_ side: Side) -> SKNode {
         let size = CGSize(width: tileSize * 0.8, height: tileSize * 0.8)

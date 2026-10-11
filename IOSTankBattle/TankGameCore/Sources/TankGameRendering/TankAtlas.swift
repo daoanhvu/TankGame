@@ -176,7 +176,7 @@ public final class TankAtlas {
         return CGFloat(widest)
     }
 
-    private static func cgImage(of image: PlatformImage) -> CGImage? {
+    static func cgImage(of image: PlatformImage) -> CGImage? {
         #if canImport(UIKit)
         return image.cgImage
         #else

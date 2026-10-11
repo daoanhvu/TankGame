@@ -677,6 +677,26 @@ final class AIMatchTests: XCTestCase {
         XCTAssertEqual(try AIWeights.load(fromJSON: data), .cautious)
     }
 
+    // MARK: Greenfield
+
+    /// The 16 x 20 map is a long march — over 30 tiles corner to corner — and
+    /// the AI has to make it from either corner and still finish the job.
+    func testFinishesOffAPlayerThatNeverMovesOnTheGreenfield() throws {
+        let start = try GameState.newGame(map: try Maps.greenfield().map)
+        let asAI = AIMatch.play(start, player: PassiveAI(), ai: GreedyAI())
+        XCTAssertEqual(asAI.result, .win(.ai, .annihilation), "Round \(asAI.state.round)")
+
+        let asPlayer = AIMatch.play(start, player: GreedyAI(), ai: PassiveAI())
+        XCTAssertEqual(asPlayer.result, .win(.player, .annihilation), "Round \(asPlayer.state.round)")
+    }
+
+    func testGreedyBeatsRandomOnTheGreenfield() throws {
+        let start = try GameState.newGame(map: try Maps.greenfield().map)
+        let asAI = AIMatch.play(start, player: RandomAI(), ai: GreedyAI())
+        XCTAssertEqual(asAI.result.flatMap(winner), .ai, "Greedy as AI: \(asAI.result!)")
+        XCTAssertTrue(asAI.illegalActions.isEmpty)
+    }
+
     private func winner(_ result: GameResult) -> Side? {
         if case .win(let side, _) = result { return side }
         return nil

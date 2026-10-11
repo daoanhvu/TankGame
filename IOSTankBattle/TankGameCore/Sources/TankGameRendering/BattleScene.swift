@@ -17,6 +17,8 @@ public final class BattleScene: SKScene {
     private let catalog: SpriteCatalog
     private let theme: BoardTheme
     private let newGame: () throws -> GameState
+    /// The Tiled map whose tile layers are drawn under the grid, if any.
+    private let art: TiledMap?
 
     /// The brain playing Red, or nil for hot seat. Swap it for a difficulty
     /// setting; the match keeps whatever state it is in.
@@ -85,16 +87,20 @@ public final class BattleScene: SKScene {
         }
     }
 
+    /// - Parameter art: the Tiled map the match is played on, for its tile
+    ///   layers; nil to draw the terrain tile by tile.
     /// - Parameter newGame: builds a fresh state for the first match and every
     ///   rematch, so the scene never has to know how a match is set up.
     public init(size: CGSize,
                 tileSize: CGFloat = 64,
                 theme: BoardTheme = .standard,
                 catalog: SpriteCatalog? = nil,
+                art: TiledMap? = nil,
                 opponent: TankAI? = GreedyAI(),
                 newGame: @escaping () throws -> GameState) throws {
         self.catalog = catalog ?? SpriteCatalog(tileSize: tileSize)
         self.theme = theme
+        self.art = art
         self.newGame = newGame
         self.opponent = opponent
         self.interaction = BoardInteraction(state: try newGame(),
@@ -118,6 +124,21 @@ public final class BattleScene: SKScene {
         }
     }
 
+    /// A match on a ready-built map, such as one loaded from the Tiled editor
+    /// (pass the `TiledMap` as `art` to draw its tiles).
+    public convenience init(size: CGSize,
+                            map: GameMap,
+                            art: TiledMap? = nil,
+                            config: GameConfig = .phase1Default,
+                            tileSize: CGFloat = 64,
+                            theme: BoardTheme = .standard,
+                            opponent: TankAI? = GreedyAI()) throws {
+        try self.init(size: size, tileSize: tileSize, theme: theme,
+                      art: art, opponent: opponent) {
+            try GameState.newGame(config: config, map: map)
+        }
+    }
+
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
@@ -133,7 +154,8 @@ public final class BattleScene: SKScene {
         addChild(fieldBackground)
 
         addChild(boardContainer)
-        board = BoardNode(state: interaction.state, catalog: catalog, theme: theme)
+        board = BoardNode(state: interaction.state, catalog: catalog, theme: theme,
+                          art: art)
         boardContainer.addChild(board)
 
         // The border shares the board's coordinate space, so it scales with the

@@ -31,6 +31,16 @@ public enum AssetName {
         "supply_\(side.rawValue)"
     }
 
+    /// The image of a Tiled tileset, named after the set's `name` in the
+    /// editor, lowercased with anything but letters and digits as `_`: the
+    /// set "Woodland essentials" is `tileset_woodland_essentials`. Not in
+    /// `required`: a map whose tilesets are missing falls back to the terrain
+    /// tiles.
+    public static func tileset(_ name: String) -> String {
+        let variant = name.lowercased().map { $0.isLetter || $0.isNumber ? String($0) : "_" }.joined()
+        return "tileset_\(variant)"
+    }
+
     public enum Effect: String, CaseIterable {
         case explosion
         case muzzleFlash = "muzzle_flash"

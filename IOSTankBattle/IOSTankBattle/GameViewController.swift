@@ -57,7 +57,11 @@ class GameViewController: UIViewController {
         do {
             // Phase 1: one handmade map, the player against the greedy AI
             // (`BattleScene`'s default opponent).
-            let scene = try BattleScene(size: skView.bounds.size, map: Maps.crossing)
+            let greenfield = try Maps.greenfield()
+            let scene = try BattleScene(size: skView.bounds.size,
+                                        map: greenfield.map,
+                                        art: greenfield.tiled)
+            scene.operationName = "Greenfield"
             scene.safeAreaInsets = currentInsets()
             self.scene = scene
             skView.presentScene(scene)

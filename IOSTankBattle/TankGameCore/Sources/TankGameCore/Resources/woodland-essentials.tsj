@@ -1,0 +1,83 @@
+{
+  "columns" : 6,
+  "image" : "woodland-essentials.png",
+  "imageheight" : 64,
+  "imagewidth" : 384,
+  "margin" : 0,
+  "name" : "Woodland essentials",
+  "spacing" : 0,
+  "tilecount" : 6,
+  "tiledversion" : "1.10.2",
+  "tileheight" : 64,
+  "tiles" : [
+    {
+      "id" : 0,
+      "properties" : [
+        {
+          "name" : "name",
+          "type" : "string",
+          "value" : "Grass"
+        }
+      ],
+      "type" : "OPEN"
+    },
+    {
+      "id" : 1,
+      "properties" : [
+        {
+          "name" : "name",
+          "type" : "string",
+          "value" : "Water"
+        }
+      ],
+      "type" : "WATER"
+    },
+    {
+      "id" : 2,
+      "properties" : [
+        {
+          "name" : "name",
+          "type" : "string",
+          "value" : "Tree"
+        }
+      ],
+      "type" : "NO-PASSABLE"
+    },
+    {
+      "id" : 3,
+      "properties" : [
+        {
+          "name" : "name",
+          "type" : "string",
+          "value" : "Stone"
+        }
+      ],
+      "type" : "NO-PASSABLE"
+    },
+    {
+      "id" : 4,
+      "properties" : [
+        {
+          "name" : "name",
+          "type" : "string",
+          "value" : "Sand"
+        }
+      ],
+      "type" : "OPEN"
+    },
+    {
+      "id" : 5,
+      "properties" : [
+        {
+          "name" : "name",
+          "type" : "string",
+          "value" : "Wildflowers"
+        }
+      ],
+      "type" : "OPEN"
+    }
+  ],
+  "tilewidth" : 64,
+  "type" : "tileset",
+  "version" : "1.10"
+}

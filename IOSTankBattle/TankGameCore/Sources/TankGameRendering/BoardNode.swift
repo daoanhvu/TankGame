@@ -27,7 +27,10 @@ public final class BoardNode: SKNode {
     /// Action key for any driving animation, preview or committed.
     static let driveKey = "drive"
 
-    public init(state: GameState, catalog: SpriteCatalog, theme: BoardTheme = .standard) {
+    /// - Parameter art: the Tiled map the state's map was read from, whose
+    ///   tile layers are drawn under the grid; nil for the per-tile terrain.
+    public init(state: GameState, catalog: SpriteCatalog, theme: BoardTheme = .standard,
+                art: TiledMap? = nil) {
         self.layout = BoardLayout(map: state.map, tileSize: catalog.tileSize)
         self.catalog = catalog
         self.theme = theme
@@ -39,7 +42,7 @@ public final class BoardNode: SKNode {
         effectLayer.zPosition = 20
         [terrainLayer, highlightLayer, tankLayer, effectLayer].forEach(addChild)
 
-        buildTerrain(map: state.map)
+        buildTerrain(map: state.map, art: art)
         buildTanks(state: state)
     }
 
@@ -55,15 +58,27 @@ public final class BoardNode: SKNode {
 
     // MARK: - Building
 
-    private func buildTerrain(map: GameMap) {
+    /// A map's own art replaces the terrain tiles outright: it already shows
+    /// what each tile is, so only a faint grid goes on top of it. Without it
+    /// (no Tiled map, or its tileset images missing) every tile gets its own
+    /// `terrainNode`, as before.
+    private func buildTerrain(map: GameMap, art: TiledMap?) {
+        let artNode = art.flatMap { catalog.mapArtNode(for: $0, boardSize: layout.size) }
+        if let artNode {
+            terrainLayer.addChild(artNode)
+            terrainLayer.addChild(gridLines())
+        }
+
         for y in 0..<map.height {
             for x in 0..<map.width {
                 let tile = Position(x: x, y: y)
                 guard let terrain = map.terrain(at: tile) else { continue }
 
-                let node = catalog.terrainNode(terrain)
-                node.position = layout.point(for: tile)
-                terrainLayer.addChild(node)
+                if artNode == nil {
+                    let node = catalog.terrainNode(terrain)
+                    node.position = layout.point(for: tile)
+                    terrainLayer.addChild(node)
+                }
 
                 // Supply markers sit on top of their (open ground) tile.
                 if let owner = map.supplyOwner(at: tile) {
@@ -74,6 +89,27 @@ public final class BoardNode: SKNode {
                 }
             }
         }
+    }
+
+    /// Every tile boundary inside the board as one path, so a 16 x 24 map costs
+    /// one node rather than one per line.
+    private func gridLines() -> SKShapeNode {
+        let path = CGMutablePath()
+        for x in 1..<layout.width {
+            let px = CGFloat(x) * layout.tileSize
+            path.move(to: CGPoint(x: px, y: 0))
+            path.addLine(to: CGPoint(x: px, y: layout.size.height))
+        }
+        for y in 1..<layout.height {
+            let py = CGFloat(y) * layout.tileSize
+            path.move(to: CGPoint(x: 0, y: py))
+            path.addLine(to: CGPoint(x: layout.size.width, y: py))
+        }
+        let lines = SKShapeNode(path: path)
+        lines.strokeColor = theme.mapArtGridLine
+        lines.lineWidth = 1
+        lines.zPosition = 0.5
+        return lines
     }
 
     private func buildTanks(state: GameState) {

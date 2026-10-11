@@ -15,7 +15,8 @@ let package = Package(
         .library(name: "TankGameAI", targets: ["TankGameAI"]),
     ],
     targets: [
-        .target(name: "TankGameCore"),
+        // The map files are the only resources: gameplay data, no art.
+        .target(name: "TankGameCore", resources: [.process("Resources")]),
         // Rendering -> AI -> Core, never back the other way: the scene has to
         // schedule the opponent's turns, so it needs the brain's protocol.
         .target(name: "TankGameRendering", dependencies: ["TankGameCore", "TankGameAI"]),

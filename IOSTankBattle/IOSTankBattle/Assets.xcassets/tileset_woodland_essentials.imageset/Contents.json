@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "tileset_woodland_essentials.png",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

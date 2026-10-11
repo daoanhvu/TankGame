@@ -26,6 +26,18 @@ The iOS app (milestone 2) will be an Xcode project that depends on both librarie
 - No terrain blocks shots (no line of sight).
 - Maps are handmade, ~12×10, 180°-rotationally symmetric. ASCII format: `.` open, `T` trees, `R` rocks,
   `W` water, `S`/`s` player/AI supply tile, `P`/`a` player/AI spawn.
+- Maps can also come from the Tiled editor: `TiledMap` (core, Foundation only) parses a `.tmj` plus its
+  `.tsj` tilesets — tile layers (gids with flip flags) and tilesets. `GameMap(tiled:supplyTiles:spawnTiles:)`
+  reads the gameplay from each layer's per-cell `types` array: `OPEN` passable, `NO_PASS` blocked (read as
+  rocks), `WATER` blocked, `""` no opinion; stacked layers, most restrictive wins. The per-cell types are
+  what counts, not the tileset's own tile types (the editor overrides them per cell). The format has no
+  supply/spawn markers, so those are passed in code. `Maps.greenfield()` returns `(map, tiled)`: 16×20 of
+  64×64 tiles, Red top-right (supply 14,0), Blue bottom-left (supply 2,19), NOT 180°-symmetric — the
+  corners mirror each other about their supply tiles instead. Its files live in
+  `Sources/TankGameCore/Resources`; to update the map, re-export from the editor and copy the `.tmj`/`.tsj`
+  over them. `BoardNode(art:)` composes the tile layers into ONE image (`TiledArt`, no seams between tiles)
+  under a faint grid; tileset images are app assets named `AssetName.tileset(<tileset name>)`, e.g.
+  `tileset_temperate_r1_c02_64`. Any missing tileset image = the board falls back to terrain tiles.
 
 **Movement**
 - Reachable tiles = Dijkstra over orthogonal neighbours, budget = tank's move points, terrain costs above.
@@ -184,9 +196,13 @@ win by annihilation inside the round limit, and every one of these bugs showed u
 
 Known limits of one ply: it can be baited (it chases a tank parked just outside artillery range), and a
 wounded tank will shuttle between the front and a full-heal depot. Both are the search depth, not the weights.
+The shuttle is far worse on the 16×20 greenfield, where a depot run takes several turns each way:
+greedy-vs-greedy there ends in a round-40 draw (7 HP each) after its survivors ferry to and from the
+depots. Against a passive or random side it still wins by annihilation (rounds 15–19).
 
 Milestone 4 — polish: import Kenney Top-down Tanks Redux into Assets.xcassets with `AssetName` names
-(until `missingRequiredAssets()` is empty), app icon, animations, damage numbers, sound, 2–3 maps + map select,
+(until `missingRequiredAssets()` is empty), app icon, animations, damage numbers, sound, 2–3 maps + map select
+(the app now opens on the greenfield; `crossing` is still the map most tests are tuned on),
 playtesting/balance.
 
 Later: 2-ply minimax with alpha-beta; difficulty levels; possibly self-play RL experiments.

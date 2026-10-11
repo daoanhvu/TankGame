@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "tileset_temperate_r1_c02_64.png",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}
