@@ -136,14 +136,14 @@ final class ButtonStyleTests: XCTestCase {
 
     /// Disabling restyles the plate; it must not drop the caption on the way.
     func testDisablingKeepsTheCaption() {
-        let button = ButtonNode(identifier: "pass", title: "Pass",
+        let button = ButtonNode(identifier: "pass", title: "End Turn",
                                 size: CGSize(width: 90, height: 40),
                                 theme: .standard)
         button.isEnabled = false
-        XCTAssertEqual(button.title, "PASS")
+        XCTAssertEqual(button.title, "END TURN")
         XCTAssertFalse(button.isTappable)
 
         button.isEnabled = true
-        XCTAssertEqual(button.title, "PASS")
+        XCTAssertEqual(button.title, "END TURN")
     }
 }

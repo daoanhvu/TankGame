@@ -218,7 +218,7 @@ public final class HUDNode: SKNode {
             (ButtonID.attack, "Attack", .danger, .attack),
             (ButtonID.wait, "Wait", .confirm, .wait),
             (ButtonID.cancel, "Cancel", .neutral, .cancel),
-            (ButtonID.pass, "Pass", .neutral, .pass),
+            (ButtonID.pass, "End Turn", .neutral, .pass),
         ]
         let cellWidth = sceneSize.width / CGFloat(specs.count)
         let barBottom = insets.bottom
@@ -341,7 +341,7 @@ public final class HUDNode: SKNode {
                 let left = interaction.pendingTankIDs.count
                 let side = interaction.state.currentSide.displayName
                 return left == 1
-                    ? "\(side) to move — 1 unit left, or pass to end the turn"
+                    ? "\(side) to move — 1 unit left, or End Turn"
                     : "\(side) to move — \(left) units awaiting orders"
             }
             // Once the tank has rolled out, the next tap on that tile is the one
