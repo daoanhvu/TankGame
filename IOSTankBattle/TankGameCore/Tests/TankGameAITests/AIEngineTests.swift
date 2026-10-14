@@ -677,12 +677,12 @@ final class AIMatchTests: XCTestCase {
         XCTAssertEqual(try AIWeights.load(fromJSON: data), .cautious)
     }
 
-    // MARK: Greenfield
+    // MARK: Twin Lakes
 
-    /// The 16 x 20 map is a long march — over 30 tiles corner to corner — and
+    /// The 12 x 18 map is a long march — over 25 tiles corner to corner — and
     /// the AI has to make it from either corner and still finish the job.
-    func testFinishesOffAPlayerThatNeverMovesOnTheGreenfield() throws {
-        let start = try GameState.newGame(map: try Maps.greenfield().map)
+    func testFinishesOffAPlayerThatNeverMovesOnTheTwinLakes() throws {
+        let start = try GameState.newGame(map: try Maps.twinLakes().map)
         let asAI = AIMatch.play(start, player: PassiveAI(), ai: GreedyAI())
         XCTAssertEqual(asAI.result, .win(.ai, .annihilation), "Round \(asAI.state.round)")
 
@@ -690,8 +690,8 @@ final class AIMatchTests: XCTestCase {
         XCTAssertEqual(asPlayer.result, .win(.player, .annihilation), "Round \(asPlayer.state.round)")
     }
 
-    func testGreedyBeatsRandomOnTheGreenfield() throws {
-        let start = try GameState.newGame(map: try Maps.greenfield().map)
+    func testGreedyBeatsRandomOnTheTwinLakes() throws {
+        let start = try GameState.newGame(map: try Maps.twinLakes().map)
         let asAI = AIMatch.play(start, player: RandomAI(), ai: GreedyAI())
         XCTAssertEqual(asAI.result.flatMap(winner), .ai, "Greedy as AI: \(asAI.result!)")
         XCTAssertTrue(asAI.illegalActions.isEmpty)

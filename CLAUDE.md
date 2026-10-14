@@ -31,13 +31,15 @@ The iOS app (milestone 2) will be an Xcode project that depends on both librarie
   reads the gameplay from each layer's per-cell `types` array: `OPEN` passable, `NO_PASS` blocked (read as
   rocks), `WATER` blocked, `""` no opinion; stacked layers, most restrictive wins. The per-cell types are
   what counts, not the tileset's own tile types (the editor overrides them per cell). The format has no
-  supply/spawn markers, so those are passed in code. `Maps.greenfield()` returns `(map, tiled)`: 16×20 of
-  64×64 tiles, Red top-right (supply 14,0), Blue bottom-left (supply 2,19), NOT 180°-symmetric — the
-  corners mirror each other about their supply tiles instead. Its files live in
+  supply/spawn markers, so those are passed in code. `Maps.twinLakes()` returns `(map, tiled)`: 12×18 of
+  92×92 tiles (`tank921218.tmj`), Red top-right (supply 9,0), Blue bottom-left (supply 2,17). Depots and
+  spawns are exact 180° turns of each other; the terrain only roughly (22 of 52 blocked cells have no
+  blocked twin). The art's tile size is independent of the board's 64-point layout tile: `TiledArt`
+  composes at the tileset's own resolution and the sprite is scaled to the board. Its files live in
   `Sources/TankGameCore/Resources`; to update the map, re-export from the editor and copy the `.tmj`/`.tsj`
   over them. `BoardNode(art:)` composes the tile layers into ONE image (`TiledArt`, no seams between tiles)
   under a faint grid; tileset images are app assets named `AssetName.tileset(<tileset name>)`, e.g.
-  `tileset_temperate_r1_c02_64`. Any missing tileset image = the board falls back to terrain tiles.
+  `tileset_green_grass_bg_92`. Any missing tileset image = the board falls back to terrain tiles.
 
 **Movement**
 - Reachable tiles = Dijkstra over orthogonal neighbours, budget = tank's move points, terrain costs above.
@@ -133,6 +135,10 @@ Milestone 2 — SpriteKit board, hot-seat 2 players — DONE
 
 The scene code is in `TankGameRendering` (not the app target) so it is unit-testable:
 - `BoardInteraction` — the whole tap flow as a pure state machine; the only thing that calls `Rules.apply`.
+  It implements the Tap-flow diagram in `docs/design.md` §4.2: everything is a tap (Tile1, the yellow X,
+  tap again to commit); the command bar has only Cancel and End Turn. Tanks move on screen only by
+  replaying committed events — anything that makes the scene busy must call `advanceAIIfNeeded()` when
+  it finishes, or Red's turn is never scheduled (that was the "Red got stuck" bug).
 - `BoardNode` / `TankSprite` — drawing and event animations. `BoardLayout` converts grid ↔ points
   (the model's y grows DOWN, SpriteKit's grows UP, so every conversion flips y).
 - `HUDNode`, `UnitCardNode`, `ButtonNode`, `CommandIcons`, `GameOverNode`, `BoardFrameNode` — the
@@ -196,13 +202,13 @@ win by annihilation inside the round limit, and every one of these bugs showed u
 
 Known limits of one ply: it can be baited (it chases a tank parked just outside artillery range), and a
 wounded tank will shuttle between the front and a full-heal depot. Both are the search depth, not the weights.
-The shuttle is far worse on the 16×20 greenfield, where a depot run takes several turns each way:
-greedy-vs-greedy there ends in a round-40 draw (7 HP each) after its survivors ferry to and from the
-depots. Against a passive or random side it still wins by annihilation (rounds 15–19).
+The shuttle gets worse the bigger the map: on a 16×20 test map greedy-vs-greedy ended in a round-40 draw
+after its survivors ferried to and from the depots. On the 12×18 twin lakes it still ends by annihilation
+(round 17), and against a passive or random side by round 10–13.
 
 Milestone 4 — polish: import Kenney Top-down Tanks Redux into Assets.xcassets with `AssetName` names
 (until `missingRequiredAssets()` is empty), app icon, animations, damage numbers, sound, 2–3 maps + map select
-(the app now opens on the greenfield; `crossing` is still the map most tests are tuned on),
+(the app now opens on twin lakes; `crossing` is still the map most tests are tuned on),
 playtesting/balance.
 
 Later: 2-ply minimax with alpha-beta; difficulty levels; possibly self-play RL experiments.

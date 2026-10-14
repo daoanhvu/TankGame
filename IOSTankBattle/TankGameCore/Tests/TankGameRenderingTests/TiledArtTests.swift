@@ -124,7 +124,7 @@ final class MapArtBoardTests: XCTestCase {
 
     private var bundleURL: URL!
 
-    /// A bundle holding stand-ins for the greenfield's tileset images, since the
+    /// A bundle holding stand-ins for the map's tileset images, since the
     /// test bundle itself has no images.
     private func tilesetBundle(for map: TiledMap) throws -> Bundle {
         bundleURL = FileManager.default.temporaryDirectory
@@ -153,14 +153,14 @@ final class MapArtBoardTests: XCTestCase {
 
     func testTilesetNamesFollowTheConventionAndAreOptional() {
         XCTAssertEqual(AssetName.tileset("Woodland essentials"), "tileset_woodland_essentials")
-        XCTAssertEqual(AssetName.tileset("temperate_r1_c02_64"), "tileset_temperate_r1_c02_64")
+        XCTAssertEqual(AssetName.tileset("green_grass_bg_92"), "tileset_green_grass_bg_92")
         XCTAssertFalse(AssetName.required.contains { $0.hasPrefix("tileset_") })
     }
 
     /// With the tilesets there are no terrain tiles left to draw — only the
     /// tanks and the supply markers fall back to shapes.
     func testBoardDrawsTheMapArtInsteadOfTerrainTiles() throws {
-        let (map, tiled) = try Maps.greenfield()
+        let (map, tiled) = try Maps.twinLakes()
         let state = try GameState.newGame(map: map)
         let catalog = SpriteCatalog(tileSize: 64, bundle: try tilesetBundle(for: tiled))
         let board = BoardNode(state: state, catalog: catalog, art: tiled)
@@ -175,7 +175,7 @@ final class MapArtBoardTests: XCTestCase {
 
     /// Missing tileset images must never leave a blank board.
     func testBoardFallsBackToTerrainTilesWithoutTheTilesets() throws {
-        let (map, tiled) = try Maps.greenfield()
+        let (map, tiled) = try Maps.twinLakes()
         let state = try GameState.newGame(map: map)
         let catalog = SpriteCatalog(tileSize: 64, bundle: Bundle(for: MapArtBoardTests.self))
         let board = BoardNode(state: state, catalog: catalog, art: tiled)

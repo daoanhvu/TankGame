@@ -152,44 +152,80 @@ The app target is a host: it owns the `SKView`, builds a `BattleScene` and feeds
 
 This is the heart of milestone 2 and the file to read first.
 
+The flow is specified by the **Tap-flow** diagram below; `BoardInteraction` implements it. As states:
+
 ```
-idle ──tap own tank──▶ planning ──tap reachable tile──▶ planning (tank DRIVES there)
-                         │  │                                  │
-                         │  │                          tap that SAME tile
-                         │  │                                  ▼
-                         │  │                         committed (move only)
-                         │  └──tap enemy in range──▶ aiming ──Attack──▶ committed
-                         └──Wait──▶ committed            Cancel ──▶ idle
+idle ──tap own tank──▶ planning (Tile1 = its own tile; X on every enemy in range of Tile1)
+planning ──tap reachable tile──▶ planning (that tile is Tile1; X's recomputed, tank stays put)
+planning ──tap Tile1 again──▶ committed: move there and end its go (hold, if Tile1 is its own tile)
+planning ──tap enemy with X──▶ aiming (damage preview in the status line)
+aiming ──tap the SAME enemy again──▶ committed: move to Tile1, then fire
+aiming ──tap Tile1 / another X / another tile──▶ as from planning
+any ──Cancel──▶ idle                            End Turn ──▶ the rest of the side's turn is given up
 ```
 
-Three rules make the player own their choice:
+```plantuml Tap-flow
+@startuml
+start
+:User selects a tank, let name it Tank1
+:User taps on a tile, let name it Tile1
 
-- **A move is only real on the second tap.** The first tap on a reachable tile drives the tank there;
-  tapping that same tile again commits and ends the turn. Re-pointing to a different tile before
-  confirming is free.
-- **No input mid-drive.** While a tank is rolling, taps and HUD buttons are swallowed, so you cannot
-  change your mind halfway through a move.
-- **Cancel is the only way out.** Tapping another tank, or empty ground, does nothing. The Cancel
-  button deselects completely (from any stage), which is also how you switch tanks.
+if (Tile1 is reachable by Tank1) then (yes)
+  if (There are some enemies in attack range of Tank1 from Tile1) then (yes)
+    :Let say the list of enemies in attack range of Tank1 from Tile1 is ATTACKABLE_ENEMIES
+    loop for each enemy in ATTACKABLE_ENEMIES
+      :Draw a yellow X right above enemy
+    end
+    
+    if (User taps on an enemy with X) then (attack)
+      // User confirm to move Tank1 to Tile1 and attack the enemy tank with X
+      :Remove X from enemies
+      :Move tank Tank1 to tile Tile1 and then attack the selected enemy
+    elseif (User tap on Tile1) then (just move)
+      // User confirm just moving the tank Tank1 to tile Tile1 and end.
+      :Remove X from enemies
+      :Move the tank Tank1 to Tile1
+    else
+      //
+    endif
 
-A tank that has *not* moved does not commit on a second tap — double-tapping a tank you just picked
-is far more likely to be a slip than a deliberate "stand still", and Wait already means that.
+  else (no)
+  endif
+else (no)
+  :Do nothing
+  :The selected tank is still being selected
+endif
+stop
+@enduml
+```
 
-Attacking after a move does not need the confirmation: tapping an enemy goes straight to aiming, so
-move-then-attack (which the frozen rules require) is still one tap per step.
+How the diagram's open branches were filled in (agreed with the author):
+
+- **Everything is a tap.** The command bar has only Cancel and End Turn. Moving, attacking and holding
+  position are all second taps: Tile1 again moves (or holds), the same X'd enemy again fires.
+- **X's appear on selection.** Tile1 starts as the tank's own tile, so enemies already in range are
+  marked straight away; attacking without moving is "select, tap the X, tap it again".
+- **The first tap on an X previews.** The status line shows damage and counterattack; the second tap on
+  the same enemy commits. Tapping a different X switches the aim; tapping another tile moves Tile1 and
+  drops the aim (range depends on where the tank stops).
+- **With no enemy in range of Tile1**, tapping Tile1 again moves the tank, same as "just move".
+- **Holding position spends the go.** Tapping the tank twice is Tile1-again with Tile1 = its own tile.
+  The old guard that ignored a double tap on a tank as a slip is gone, since there is no Wait button.
+- **Nothing moves until the commit.** The tank stays put while Tile1 is chosen; the committed `.moved`
+  event is what drives it (see §4.5).
 
 It owns the `GameState` and is **the only thing that calls `Rules.apply`**. The scene never reasons
 about rules; it asks `BoardInteraction` what to draw and forwards taps.
 
 Design points:
 
-- **Planning never mutates the game.** A planned destination is a field on `MovePlan`; the real tank
-  does not move until Wait or Attack. Cancel is therefore free.
+- **Planning never mutates the game.** Tile1 is a field on `MovePlan`; the real tank does not move
+  until the confirming tap. Cancel is therefore free.
 - **Re‑pointing the move drops the aim.** Range depends on where you stop, so a new destination
   invalidates the target. Enforced in `tapTile`, tested explicitly.
-- **Targets are computed from the planned tile**, via `Rules.tankAfterMove`, so the highlight set and
-  the damage preview already account for a supply refill.
-- **`tapTile` can end the turn.** The confirmation tap returns the committed events, so every caller
+- **Targets are computed from Tile1**, via `Rules.tankAfterMove`, so the X's and the damage preview
+  already account for a supply refill.
+- **`tapTile` can end the turn.** A confirming tap returns the committed events, so every caller
   must animate them. `BattleScene.tapBoard` is the single entry point for that, shared by real taps
   and `simulateTap`, because an earlier version let the test hook drop the events and the board
   silently desynced from the model.
@@ -231,36 +267,22 @@ the placeholder shapes are replaced by real sprites.
 every sprite to the authoritative state. **The animation is never the source of truth** — the sync at
 the end means a dropped or interrupted animation cannot desynchronise the board from the model.
 
-### 4.5 Driving a planned move
+### 4.5 Tanks only move by replaying committed events
 
-A turn is one atomic action (move **and** optional attack), so tapping a reachable tile cannot move
-the tank in the model — the player may still pick a target or cancel. But a tank that only moves once
-you press Wait reads as broken: you tap a tile and nothing happens.
+A tank never moves on screen before its action is committed: the `.moved` event from `Rules.apply` is
+what drives it, through the same `BoardNode.play` path the AI's moves use. The sprites are therefore
+never ahead of the rules, and the only busy states are "animating events" and "Red is thinking".
 
-So the *sprite* is driven ahead of the model. `BattleScene` keeps `previewTankID` and `previewRoute`
-(the route the tank has actually driven, starting at its real tile) and `BoardNode.drivePreview`
-rolls it one tile per `driveDurationPerTile` — constant speed, since every step is one tile.
+There used to be a second mechanism that drove the *sprite* ahead of the model while a move was being
+planned (`previewTankID`, `PreviewRoute`, `BoardNode.drivePreview`). It was removed with the Tap-flow,
+which never needs it — and it was the source of a deadlock: End Turn with a tank parked on a planned
+tile drove that tank home, Red's turn was refused while it rolled, and the drive's completion never
+asked for it again, so the board locked for good. `BattleSceneAITests.testRedStillPlaysAfterBluesFirstMoveAndEndTurn`
+pins that scenario down.
 
-Three things make this safe:
-
-- **`sync` must not fight the preview.** It pins every sprite to its model position, which would snap
-  the tank home on the next refresh. It now skips any tank that is mid-drive or named by
-  `keepingPositionOf`.
-- **The preview *is* the move animation.** On commit, `settlePreviewedTank` parks the tank on the
-  planned tile and `drive` skips any path whose destination the sprite already occupies — otherwise
-  it would drive the same route twice. If the action did *not* move that tank (Pass, or a Wait that
-  stayed put), `recallPreviewedTank` drives it home instead.
-- **Re-pointing stitches routes.** `PreviewRoute.tiles(from:to:)` reverses to the tile where the old
-  and new routes diverge, then drives out along the new one, so extending a route carries on forward
-  instead of restarting. It is pure and unit-tested because it is all index arithmetic.
-
-Interrupting a drive is fine: `SKAction.move(to:)` glides on from wherever the tank physically is, so
-rapid tapping never makes it jump. The one cosmetic wrinkle is that a route stitched mid-step treats
-the tank as logically on the tile it was heading for, so that single step covers a slightly different
-distance in the same time.
-
-The invariant from §4.4 still holds — the model is the truth, and the `sync` after every committed
-animation re-asserts it.
+The rule for anything that makes the scene busy in future: when it finishes, call
+`advanceAIIfNeeded()`. That function refuses to schedule Red while anything is busy, so whatever was
+busy is responsible for asking again.
 
 ### 4.6 Input gating
 

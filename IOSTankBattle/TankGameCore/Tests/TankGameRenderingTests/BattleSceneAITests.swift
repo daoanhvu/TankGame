@@ -103,8 +103,9 @@ final class BattleSceneAITests: XCTestCase {
     }
 
     func testAnActionWithNothingToAnimateStillHandsOver() throws {
-        // "Wait" without moving produces no events whatsoever: there is no
-        // `.moved` to draw and `.turnBegan` only fires when the side changes.
+        // Holding position (tapping a tank twice) produces no events
+        // whatsoever: there is no `.moved` to draw, and `.turnBegan` only fires
+        // when the side changes.
         // A scene that reads "no events" as "the rules declined that" leaves
         // the board on Red's turn with input locked and no way out.
         let scene = try makeScene()
@@ -112,8 +113,8 @@ final class BattleSceneAITests: XCTestCase {
 
         for tank in blueTanks {
             XCTAssertTrue(scene.isAcceptingInput, "Blue's turn stalled at tank \(tank.id)")
-            scene.simulateTap(onTile: tank.position)   // select, no move
-            scene.simulateWait()                       // hold position
+            scene.simulateTap(onTile: tank.position)   // select: Tile1 is its own tile
+            scene.simulateTap(onTile: tank.position)   // again: hold position
             _ = wait(upTo: 1) { scene.isAcceptingInput }
         }
 
@@ -122,6 +123,31 @@ final class BattleSceneAITests: XCTestCase {
         XCTAssertTrue(wait { scene.currentState.round == 2 && scene.isAcceptingInput },
                       "Red never got the board after a turn of tanks holding position")
         XCTAssertEqual(scene.currentState.currentSide, .player)
+    }
+
+    func testRedStillPlaysAfterBluesFirstMoveAndEndTurn() throws {
+        // The bug report: make one move, press End Turn, and Red never moved —
+        // the board stayed locked for good. An End Turn could start a drive
+        // (sending a tank parked on a planned tile home) that refused Red's
+        // turn and then never asked for it again. Covers both ways the first
+        // move can be left: committed, and only pointed at.
+        for commitTheMove in [true, false] {
+            let scene = try makeScene()
+            let state = scene.currentState
+            let tank = try XCTUnwrap(state.aliveTanks(of: .player).first)
+            let tile1 = try XCTUnwrap(Rules.reachableTiles(for: tank, in: state).keys
+                .filter { $0 != tank.position }.min { ($0.y, $0.x) < ($1.y, $1.x) })
+
+            scene.simulateTap(onTile: tank.position)
+            scene.simulateTap(onTile: tile1)
+            if commitTheMove { scene.simulateTap(onTile: tile1) }
+            XCTAssertTrue(wait { scene.isAcceptingInput })
+
+            scene.simulatePass()
+            XCTAssertTrue(wait { scene.currentState.round == 2 && scene.isAcceptingInput },
+                          "Red stuck after End Turn (move committed: \(commitTheMove))")
+            XCTAssertEqual(scene.currentState.currentSide, .player)
+        }
     }
 
     func testHotSeatLeavesRedToThePlayer() throws {

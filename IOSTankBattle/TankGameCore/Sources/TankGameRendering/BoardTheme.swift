@@ -39,6 +39,9 @@ public struct BoardTheme: Sendable {
 
     public var moveHighlight = SKColor(red: 0.42, green: 0.72, blue: 0.95, alpha: 0.38)
     public var attackHighlight = SKColor(red: 0.90, green: 0.33, blue: 0.27, alpha: 0.42)
+    /// The X on an enemy that can be hit from the chosen tile.
+    public var targetMark = SKColor(red: 1.00, green: 0.84, blue: 0.20, alpha: 1.0)
+    public var targetMarkOutline = SKColor(red: 0.10, green: 0.08, blue: 0.02, alpha: 0.85)
     public var selectionRing = SKColor(red: 0.90, green: 0.76, blue: 0.30, alpha: 1.00)
     public var pathHint = SKColor(red: 0.90, green: 0.86, blue: 0.72, alpha: 0.80)
     public var hpBarBackground = SKColor(white: 0.0, alpha: 0.55)

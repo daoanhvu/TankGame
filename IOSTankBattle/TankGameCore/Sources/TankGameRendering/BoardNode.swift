@@ -15,6 +15,9 @@ public final class BoardNode: SKNode {
     private let terrainLayer = SKNode()
     private let highlightLayer = SKNode()
     private let tankLayer = SKNode()
+    /// The yellow X on targetable enemies. Its own layer, above the tanks,
+    /// because the X is drawn on top of the tank it marks.
+    private let markerLayer = SKNode()
     private let effectLayer = SKNode()
     private var tankSprites: [TankID: TankSprite] = [:]
 
@@ -39,8 +42,9 @@ public final class BoardNode: SKNode {
         terrainLayer.zPosition = 0
         highlightLayer.zPosition = 2
         tankLayer.zPosition = 10
+        markerLayer.zPosition = 15
         effectLayer.zPosition = 20
-        [terrainLayer, highlightLayer, tankLayer, effectLayer].forEach(addChild)
+        [terrainLayer, highlightLayer, tankLayer, markerLayer, effectLayer].forEach(addChild)
 
         buildTerrain(map: state.map, art: art)
         buildTanks(state: state)
@@ -127,10 +131,9 @@ public final class BoardNode: SKNode {
     /// Snaps every sprite to the state. Called after animations and whenever the
     /// board might have drifted (a rejected action, a new match).
     ///
-    /// A tank that is mid-drive, or the one `keepingPositionOf` names, keeps the
-    /// position it has: it is standing on a planned tile the model does not know
-    /// about yet, and snapping it home would undo the preview drive.
-    public func sync(with state: GameState, keepingPositionOf previewed: TankID? = nil) {
+    /// A tank that is mid-drive keeps the position it has; the drive's own end
+    /// puts it on the right tile.
+    public func sync(with state: GameState) {
         for tank in state.tanks {
             guard let sprite = tankSprites[tank.id] else { continue }
             sprite.update(tank: tank, stats: state.stats(of: tank))
@@ -138,45 +141,10 @@ public final class BoardNode: SKNode {
             sprite.setSpent(tank.side == state.currentSide && state.hasActed(tank.id))
 
             let isDriving = sprite.action(forKey: Self.driveKey) != nil
-            if !isDriving && tank.id != previewed {
+            if !isDriving {
                 sprite.position = layout.point(for: tank.position)
             }
         }
-    }
-
-    // MARK: - Preview driving
-
-    /// Drives a tank through `tiles` without touching the model, one tile per
-    /// `driveDurationPerTile`.
-    ///
-    /// This is how a planned move is shown: the turn is a single action that is
-    /// not committed until Attack or Wait, so the tank has to roll to the tile
-    /// the player picked while the rules still believe it is at home. `tiles`
-    /// lists only the tiles still to visit, so re-pointing a move can hand over
-    /// a route that drives back the way it came and out again.
-    ///
-    /// Interrupting a running drive is fine: SpriteKit glides on from wherever
-    /// the tank physically is, so a fast series of taps never makes it jump.
-    public func drivePreview(tankID: TankID, through tiles: [Position],
-                             completion: (() -> Void)? = nil) {
-        guard let sprite = tankSprites[tankID], !tiles.isEmpty else {
-            completion?()
-            return
-        }
-        sprite.removeAction(forKey: Self.driveKey)
-        let steps: [SKAction] = tiles.map {
-            .move(to: layout.point(for: $0), duration: driveDurationPerTile)
-        }
-        sprite.run(.sequence(steps + [.run { completion?() }]), withKey: Self.driveKey)
-    }
-
-    /// Stops a preview drive and puts the tank exactly on `tile`. Used when the
-    /// player commits while the tank is still rolling, so the committed move
-    /// does not animate a second time.
-    public func finishPreview(tankID: TankID, at tile: Position) {
-        guard let sprite = tankSprites[tankID] else { return }
-        sprite.removeAction(forKey: Self.driveKey)
-        sprite.position = layout.point(for: tile)
     }
 
     public func setSelectedTank(_ tankID: TankID?) {
@@ -193,21 +161,28 @@ public final class BoardNode: SKNode {
         }
     }
 
+    /// The tile a tank's sprite is drawn on right now, which during a planned
+    /// move is not the tile the rules have it on. For tests.
+    func tileShowing(tankID: TankID) -> Position? {
+        tankSprites[tankID].flatMap { tile(at: $0.position) }
+    }
+
     // MARK: - Highlights
 
-    /// Draws the move options, the targets in range, and the route the tank
-    /// would drive. Replaces whatever was shown before.
+    /// Draws the move options, a yellow X on every enemy in range of Tile1, and
+    /// the route to Tile1. Replaces whatever was shown before.
     public func showHighlights(moveTiles: [Position],
-                               attackTiles: [Position],
+                               targetTiles: [Position],
                                path: [Position],
                                aimedTile: Position?) {
         highlightLayer.removeAllChildren()
+        markerLayer.removeAllChildren()
 
         for tile in moveTiles {
             highlightLayer.addChild(tileOverlay(at: tile, color: theme.moveHighlight))
         }
-        for tile in attackTiles {
-            highlightLayer.addChild(tileOverlay(at: tile, color: theme.attackHighlight))
+        for tile in targetTiles {
+            markerLayer.addChild(targetMark(at: tile))
         }
         if let aimedTile {
             highlightLayer.addChild(reticle(at: aimedTile))
@@ -225,18 +200,57 @@ public final class BoardNode: SKNode {
             route.zPosition = 3
             highlightLayer.addChild(route)
 
-            // A dot marks where the tank will stop.
+            // A dot marks Tile1. It pulses because the tank has not gone there:
+            // a second tap on it is what moves the tank.
             let stop = SKShapeNode(circleOfRadius: layout.tileSize * 0.12)
             stop.fillColor = theme.pathHint
             stop.lineWidth = 0
             stop.position = layout.point(for: path[path.count - 1])
             stop.zPosition = 3
+            stop.run(.repeatForever(.sequence([
+                .scale(to: 1.4, duration: 0.5),
+                .scale(to: 1.0, duration: 0.5),
+            ])))
             highlightLayer.addChild(stop)
         }
     }
 
     public func clearHighlights() {
         highlightLayer.removeAllChildren()
+        markerLayer.removeAllChildren()
+    }
+
+    /// The yellow X drawn on top of an enemy that can be hit from Tile1. A dark
+    /// stroke under the yellow one keeps it readable over any tank or terrain.
+    private func targetMark(at tile: Position) -> SKNode {
+        let half = layout.tileSize * 0.22
+        let cross = CGMutablePath()
+        cross.move(to: CGPoint(x: -half, y: -half))
+        cross.addLine(to: CGPoint(x: half, y: half))
+        cross.move(to: CGPoint(x: -half, y: half))
+        cross.addLine(to: CGPoint(x: half, y: -half))
+
+        let group = SKNode()
+        group.position = layout.point(for: tile)
+        group.name = Self.targetMarkName
+        for (color, width) in [(theme.targetMarkOutline, layout.tileSize * 0.13),
+                               (theme.targetMark, layout.tileSize * 0.07)] {
+            let stroke = SKShapeNode(path: cross)
+            stroke.strokeColor = color
+            stroke.lineWidth = width
+            stroke.lineCap = .round
+            group.addChild(stroke)
+        }
+        return group
+    }
+
+    static let targetMarkName = "targetMark"
+
+    /// Tiles currently carrying a yellow X. For tests.
+    func targetMarkTiles() -> [Position] {
+        markerLayer.children
+            .filter { $0.name == Self.targetMarkName }
+            .compactMap { tile(at: $0.position) }
     }
 
     /// The target marker: a ring with ticks, matching the command bar's attack
@@ -321,9 +335,8 @@ public final class BoardNode: SKNode {
             return next()
         }
 
-        // A planned move has usually already been driven as a preview, so the
-        // tank is standing on the destination before the action is committed.
-        // Driving it again would send it round the course twice.
+        // Defensive: a tank already parked on the destination has nothing left
+        // to drive, and re-running the route would send it round twice.
         let destination = layout.point(for: last)
         if hypot(sprite.position.x - destination.x, sprite.position.y - destination.y) < 0.5 {
             return next()

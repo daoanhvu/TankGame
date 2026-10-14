@@ -34,15 +34,13 @@ public struct BoardInsets: Equatable, Sendable {
 @MainActor
 public final class HUDNode: SKNode {
 
+    /// Only two commands are buttons. Moving, attacking and holding position
+    /// are all taps on the board (see the Tap-flow in `docs/design.md`).
     public enum ButtonID {
-        public static let attack = "attack"
-        public static let wait = "wait"
         public static let cancel = "cancel"
         public static let pass = "pass"
     }
 
-    public var onAttack: (() -> Void)?
-    public var onWait: (() -> Void)?
     public var onCancel: (() -> Void)?
     public var onPass: (() -> Void)?
 
@@ -212,11 +210,9 @@ public final class HUDNode: SKNode {
     }
 
     /// One panel of equal cells divided by hairlines, as in the design, rather
-    /// than four separate buttons.
+    /// than separate buttons.
     private func buildCommandBar() {
         let specs: [(String, String, BoardTheme.ButtonStyle, CommandIcon)] = [
-            (ButtonID.attack, "Attack", .danger, .attack),
-            (ButtonID.wait, "Wait", .confirm, .wait),
             (ButtonID.cancel, "Cancel", .neutral, .cancel),
             (ButtonID.pass, "End Turn", .neutral, .pass),
         ]
@@ -257,8 +253,6 @@ public final class HUDNode: SKNode {
 
     private func handle(_ identifier: String) {
         switch identifier {
-        case ButtonID.attack: onAttack?()
-        case ButtonID.wait: onWait?()
         case ButtonID.cancel: onCancel?()
         case ButtonID.pass: onPass?()
         default: break
@@ -302,14 +296,12 @@ public final class HUDNode: SKNode {
         theme.previewStyle.sized(12).apply(to: statusLabel, text: statusText(for: interaction))
         statusDot.position.x = statusLabel.frame.minX - 10
 
-        setEnabled(ButtonID.attack, interaction.canAttack)
-        setEnabled(ButtonID.wait, interaction.canWait)
         setEnabled(ButtonID.cancel, interaction.plan != nil)
         setEnabled(ButtonID.pass, interaction.canPass)
 
-        // Lift whichever command is the obvious next one.
-        let primary = interaction.canAttack ? ButtonID.attack
-            : (interaction.canWait ? ButtonID.wait : ButtonID.pass)
+        // With a tank selected the next move is on the board, so no button is
+        // lifted; with nothing selected, End Turn is the only command there is.
+        let primary = interaction.plan == nil ? ButtonID.pass : nil
         for button in buttons { button.isPrimary = (button.identifier == primary) }
     }
 
@@ -344,11 +336,15 @@ public final class HUDNode: SKNode {
                     ? "\(side) to move — 1 unit left, or End Turn"
                     : "\(side) to move — \(left) units awaiting orders"
             }
-            // Once the tank has rolled out, the next tap on that tile is the one
-            // that spends the turn, so say so.
-            return plan.hasMoved
-                ? "Tap that tile again to confirm the move, or an enemy to attack"
-                : "Tap a tile to move, or an enemy in range"
+            // Spell out what each tap would do from here: the flow has no
+            // buttons for it, so this line is the only instruction.
+            let hasTargets = !interaction.targetableTankIDs.isEmpty
+            switch (plan.hasMoved, hasTargets) {
+            case (true, true):  return "Tap an X to aim, or the marked tile again to move"
+            case (true, false): return "Tap the marked tile again to move there"
+            case (false, true): return "Tap an X to aim, a tile to move, or the tank to hold"
+            case (false, false): return "Tap a tile to move, or the tank again to hold"
+            }
         }
 
         var text = "Deal \(preview.damage) to \(target.kind.displayName)"
@@ -361,7 +357,8 @@ public final class HUDNode: SKNode {
         } else {
             text += "   ·   no counterattack"
         }
-        return text
+        // The preview is the first of two taps; say what the second one does.
+        return text + "   ·   tap again to fire"
     }
 
     private func setEnabled(_ identifier: String, _ enabled: Bool) {

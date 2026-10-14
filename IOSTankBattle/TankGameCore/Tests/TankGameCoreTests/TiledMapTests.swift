@@ -164,30 +164,39 @@ final class TiledMapTests: XCTestCase {
         XCTAssertEqual(rect.height, 64)
     }
 
-    // MARK: - Greenfield
+    // MARK: - Twin Lakes
 
-    func testGreenfieldLoads() throws {
-        let (m, tiled) = try Maps.greenfield()
-        XCTAssertEqual(m.width, 16)
-        XCTAssertEqual(m.height, 20)
-        XCTAssertEqual(tiled.tileWidth, 64)
-        XCTAssertEqual(tiled.tileHeight, 64)
+    func testTwinLakesLoads() throws {
+        let (m, tiled) = try Maps.twinLakes()
+        XCTAssertEqual(m.width, 12)
+        XCTAssertEqual(m.height, 18)
+        XCTAssertEqual(tiled.tileWidth, 92)
+        XCTAssertEqual(tiled.tileHeight, 92)
         XCTAssertEqual(tiled.layers.map(\.name), ["Background", "Ground", "Objects"])
-        XCTAssertEqual(m.supplyTiles[.ai], Position(x: 14, y: 0))
-        XCTAssertEqual(m.supplyTiles[.player], Position(x: 2, y: 19))
+        XCTAssertEqual(m.supplyTiles[.ai], Position(x: 9, y: 0))
+        XCTAssertEqual(m.supplyTiles[.player], Position(x: 2, y: 17))
 
         // Lakes, villages, rocks and forest, exactly as the Ground layer types them.
         let blocked: Set<Position> = [
-            Position(x: 1, y: 0),
-            Position(x: 6, y: 3), Position(x: 6, y: 4), Position(x: 7, y: 4),
-            Position(x: 11, y: 4), Position(x: 12, y: 4), Position(x: 15, y: 4), Position(x: 15, y: 5),
-            Position(x: 6, y: 7), Position(x: 10, y: 9), Position(x: 11, y: 9),
-            Position(x: 2, y: 11), Position(x: 3, y: 11), Position(x: 4, y: 11),
-            Position(x: 5, y: 14), Position(x: 12, y: 14), Position(x: 13, y: 14), Position(x: 14, y: 14),
-            Position(x: 1, y: 15), Position(x: 2, y: 15), Position(x: 3, y: 15),
-            Position(x: 5, y: 15), Position(x: 6, y: 15),
-            Position(x: 12, y: 15), Position(x: 13, y: 15), Position(x: 14, y: 15),
-            Position(x: 1, y: 16), Position(x: 2, y: 16), Position(x: 3, y: 16),
+            Position(x: 3, y: 1), Position(x: 4, y: 1),
+            Position(x: 3, y: 2), Position(x: 4, y: 2),
+            Position(x: 0, y: 3), Position(x: 1, y: 3), Position(x: 8, y: 3), Position(x: 11, y: 3),
+            Position(x: 0, y: 4), Position(x: 1, y: 4), Position(x: 2, y: 4), Position(x: 3, y: 4),
+            Position(x: 4, y: 4), Position(x: 5, y: 4), Position(x: 8, y: 4), Position(x: 11, y: 4),
+            Position(x: 0, y: 5), Position(x: 3, y: 5), Position(x: 4, y: 5), Position(x: 8, y: 5),
+            Position(x: 11, y: 5),
+            Position(x: 2, y: 6), Position(x: 3, y: 6), Position(x: 4, y: 6), Position(x: 8, y: 6),
+            Position(x: 11, y: 7),
+            Position(x: 4, y: 9), Position(x: 6, y: 9),
+            Position(x: 8, y: 10), Position(x: 9, y: 10), Position(x: 10, y: 10),
+            Position(x: 0, y: 11), Position(x: 8, y: 11), Position(x: 9, y: 11), Position(x: 10, y: 11),
+            Position(x: 0, y: 12), Position(x: 3, y: 12), Position(x: 6, y: 12), Position(x: 7, y: 12),
+            Position(x: 8, y: 12), Position(x: 9, y: 12), Position(x: 10, y: 12),
+            Position(x: 6, y: 13), Position(x: 7, y: 13), Position(x: 8, y: 13), Position(x: 9, y: 13),
+            Position(x: 10, y: 13),
+            Position(x: 0, y: 14), Position(x: 10, y: 14),
+            Position(x: 0, y: 15), Position(x: 8, y: 15),
+            Position(x: 8, y: 16),
         ]
         for y in 0..<m.height {
             for x in 0..<m.width {
@@ -199,8 +208,8 @@ final class TiledMapTests: XCTestCase {
     }
 
     /// Every cell of the map has art under it: the background layer covers it all.
-    func testGreenfieldHasArtEverywhere() throws {
-        let (m, tiled) = try Maps.greenfield()
+    func testTwinLakesHasArtEverywhere() throws {
+        let (m, tiled) = try Maps.twinLakes()
         let background = try XCTUnwrap(tiled.layers.first)
         for y in 0..<m.height {
             for x in 0..<m.width {
@@ -209,11 +218,11 @@ final class TiledMapTests: XCTestCase {
         }
     }
 
-    /// Red's corner is Blue's turned round about the supply tiles, so each army
-    /// stands the same way round its own depot.
-    func testGreenfieldCornersMirrorEachOther() throws {
-        let m = try Maps.greenfield().map
-        func mirrored(_ p: Position) -> Position { Position(x: 16 - p.x, y: 19 - p.y) }
+    /// Red's corner is Blue's turned through 180°, depot and spawns alike, so
+    /// each army stands the same way round its own depot.
+    func testTwinLakesCornersMirrorEachOther() throws {
+        let m = try Maps.twinLakes().map
+        func mirrored(_ p: Position) -> Position { Position(x: 11 - p.x, y: 17 - p.y) }
         XCTAssertEqual(mirrored(m.supplyTiles[.ai]!), m.supplyTiles[.player])
         XCTAssertEqual(m.spawnTiles[.ai]!.map(mirrored), m.spawnTiles[.player])
 
@@ -225,8 +234,8 @@ final class TiledMapTests: XCTestCase {
 
     /// Every open tile can be reached from Blue's corner, so no obstacle walls
     /// off a depot or a pocket of the field.
-    func testGreenfieldHasNoSealedPockets() throws {
-        let m = try Maps.greenfield().map
+    func testTwinLakesHasNoSealedPockets() throws {
+        let m = try Maps.twinLakes().map
         var seen: Set<Position> = [m.spawnTiles[.player]![0]]
         var frontier = Array(seen)
         while let p = frontier.popLast() {

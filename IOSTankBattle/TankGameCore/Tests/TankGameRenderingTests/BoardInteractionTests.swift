@@ -45,8 +45,6 @@ final class BoardInteractionSelectionTests: XCTestCase {
         XCTAssertNil(interaction.selectedTankID)
         XCTAssertTrue(interaction.moveHighlights.isEmpty)
         XCTAssertTrue(interaction.targetableTankIDs.isEmpty)
-        XCTAssertFalse(interaction.canWait)
-        XCTAssertFalse(interaction.canAttack)
         XCTAssertTrue(interaction.canPass)
     }
 
@@ -60,7 +58,6 @@ final class BoardInteractionSelectionTests: XCTestCase {
         XCTAssertEqual(interaction.selectedTankID, 0)
         XCTAssertEqual(interaction.plan?.destination, p(1, 2), "Not moved yet")
         XCTAssertFalse(interaction.plan?.hasMoved ?? true)
-        XCTAssertTrue(interaction.canWait, "A selected tank can always just wait")
         XCTAssertFalse(interaction.moveHighlights.contains(p(1, 2)),
                        "The tank's own tile is not drawn as a move option")
         XCTAssertTrue(interaction.moveHighlights.contains(p(4, 2)), "3 tiles away, within budget")
@@ -141,7 +138,7 @@ final class BoardInteractionSelectionTests: XCTestCase {
 
 final class BoardInteractionPlanningTests: XCTestCase {
 
-    func testTappingAReachableTileRepointsTheMove() throws {
+    func testTappingAReachableTileMarksIt() throws {
         var interaction = try makeInteraction([
             tank(0, .player, .medium, 1, 2),
             tank(1, .ai, .medium, 5, 2),
@@ -153,6 +150,7 @@ final class BoardInteractionPlanningTests: XCTestCase {
         XCTAssertTrue(interaction.plan?.hasMoved ?? false)
         XCTAssertEqual(interaction.state.tanks[0].position, p(1, 2),
                        "Planning must not move the real tank")
+        XCTAssertEqual(interaction.pathHint.last, p(3, 2), "The route to Tile1 is drawn instead")
         XCTAssertEqual(interaction.plannedPath.first, p(1, 2))
         XCTAssertEqual(interaction.plannedPath.last, p(3, 2))
     }
@@ -166,7 +164,7 @@ final class BoardInteractionPlanningTests: XCTestCase {
         XCTAssertTrue(interaction.targetableTankIDs.isEmpty, "4 tiles away, out of range")
 
         interaction.tapTile(p(4, 2))
-        XCTAssertEqual(interaction.targetableTankIDs, [1], "Adjacent after the planned move")
+        XCTAssertEqual(interaction.targetableTankIDs, [1], "Adjacent to Tile1, so it gets an X")
     }
 
     func testTappingYourOwnTileAgainCancelsThePlannedMove() throws {
@@ -230,7 +228,6 @@ final class BoardInteractionAimingTests: XCTestCase {
         XCTAssertEqual(preview.damage, 4)
         XCTAssertFalse(preview.targetDestroyed)
         XCTAssertEqual(preview.counterDamage, 4, "Both are mediums, so it fires back")
-        XCTAssertTrue(interaction.canAttack)
     }
 
     func testPreviewWarnsWhenTheCounterattackWouldKillYou() throws {
@@ -264,7 +261,7 @@ final class BoardInteractionAimingTests: XCTestCase {
             tank(1, .ai, .medium, 5, 2),
         ])
         interaction.tapTile(p(1, 2))
-        interaction.tapTile(p(4, 2))          // plan a move into range
+        interaction.tapTile(p(4, 2))          // Tile1, in range of the enemy
         interaction.tapTile(p(5, 2))          // then aim
 
         let preview = try XCTUnwrap(interaction.attackPreview)
@@ -281,7 +278,7 @@ final class BoardInteractionAimingTests: XCTestCase {
         interaction.tapTile(p(5, 4))
 
         XCTAssertNil(interaction.aimedTargetID)
-        XCTAssertFalse(interaction.canAttack)
+        XCTAssertNil(interaction.attackPreview)
         XCTAssertEqual(interaction.selectedTankID, 0, "The selection survives a bad tap")
     }
 
@@ -308,9 +305,9 @@ final class BoardInteractionCommitTests: XCTestCase {
             tank(1, .ai, .medium, 5, 2),
         ])
         interaction.tapTile(p(1, 2))
-        interaction.tapTile(p(4, 2))
-        interaction.tapTile(p(5, 2))
-        let events = interaction.attack()
+        interaction.tapTile(p(4, 2))          // Tile1
+        interaction.tapTile(p(5, 2))          // aim
+        let events = interaction.tapAimedEnemyAgain()
 
         XCTAssertEqual(interaction.state.tanks[0].position, p(4, 2))
         XCTAssertEqual(interaction.state.tanks[1].hp, 6)
@@ -319,22 +316,25 @@ final class BoardInteractionCommitTests: XCTestCase {
         XCTAssertEqual(interaction.phase, .idle, "Selection cleared after acting")
 
         // The renderer gets the move, the shot and the reply, in that order.
-        XCTAssertEqual(events.count, 4)
+        // Fail rather than index past the end: an out-of-range index crashes
+        // the whole test process, and every suite after this one never runs.
+        guard events.count == 4 else { return XCTFail("Expected 4 events, got \(events)") }
         XCTAssertEqual(events[0], .moved(0, path: [p(1, 2), p(2, 2), p(3, 2), p(4, 2)]))
         XCTAssertEqual(events[1], .attacked(attacker: 0, defender: 1, damage: 4, destroyed: false))
         XCTAssertEqual(events[2], .counterattacked(attacker: 1, defender: 0, damage: 4, destroyed: false))
         XCTAssertEqual(events[3], .turnBegan(.ai, round: 1))
     }
 
-    func testWaitMovesWithoutFiring() throws {
+    func testTappingTile1WhileAimingMovesWithoutFiring() throws {
         var interaction = try makeInteraction([
             tank(0, .player, .medium, 1, 2),
             tank(1, .ai, .medium, 5, 2),
         ])
         interaction.tapTile(p(1, 2))
-        interaction.tapTile(p(4, 2))
-        interaction.tapTile(p(5, 2))       // aim at it...
-        let events = interaction.wait()    // ...then think better of it
+        interaction.tapTile(p(4, 2))                  // Tile1
+        interaction.tapTile(p(5, 2))                  // aim at it...
+        XCTAssertNotNil(interaction.aimedTargetID)
+        let events = interaction.tapTile1Again()      // ...then think better of it
 
         XCTAssertEqual(interaction.state.tanks[0].position, p(4, 2))
         XCTAssertEqual(interaction.state.tanks[1].hp, 10, "Nobody was shot")
@@ -343,13 +343,13 @@ final class BoardInteractionCommitTests: XCTestCase {
         XCTAssertTrue(events.contains(.moved(0, path: [p(1, 2), p(2, 2), p(3, 2), p(4, 2)])))
     }
 
-    func testWaitWithoutMovingStillEndsTheTurn() throws {
+    func testTappingTheTankAgainHoldsPosition() throws {
         var interaction = try makeInteraction([
             tank(0, .player, .medium, 1, 2),
             tank(1, .ai, .medium, 5, 2),
         ])
         interaction.tapTile(p(1, 2))
-        interaction.wait()
+        interaction.tapTile1Again()
 
         XCTAssertEqual(interaction.state.tanks[0].position, p(1, 2))
         XCTAssertEqual(interaction.state.currentSide, .ai)
@@ -362,7 +362,7 @@ final class BoardInteractionCommitTests: XCTestCase {
         ])
         interaction.tapTile(p(4, 2))
         interaction.tapTile(p(5, 2))
-        interaction.attack()
+        interaction.tapAimedEnemyAgain()
 
         XCTAssertEqual(interaction.state.tanks[0].position, p(4, 2), "Stayed put")
         XCTAssertEqual(interaction.state.tanks[1].hp, 6)
@@ -395,16 +395,6 @@ final class BoardInteractionCommitTests: XCTestCase {
         XCTAssertEqual(interaction.state.tanks[1].hp, 10, "Passing fires nothing")
     }
 
-    func testAttackIsIgnoredWithoutATarget() throws {
-        var interaction = try makeInteraction([
-            tank(0, .player, .medium, 1, 2),
-            tank(1, .ai, .medium, 5, 2),
-        ])
-        interaction.tapTile(p(1, 2))
-        XCTAssertTrue(interaction.attack().isEmpty)
-        XCTAssertEqual(interaction.state.currentSide, .player, "Nothing happened")
-    }
-
     func testHotSeatLetsBothSidesPlayInTurn() throws {
         var interaction = try makeInteraction([
             tank(0, .player, .medium, 1, 2),
@@ -413,13 +403,13 @@ final class BoardInteractionCommitTests: XCTestCase {
         // Blue drives up.
         interaction.tapTile(p(1, 2))
         interaction.tapTile(p(2, 2))
-        interaction.wait()
+        interaction.tapTile1Again()
         XCTAssertEqual(interaction.currentSide, .ai)
 
         // Red answers on the same device.
         interaction.tapTile(p(5, 2))
         interaction.tapTile(p(4, 2))
-        interaction.wait()
+        interaction.tapTile1Again()
 
         XCTAssertEqual(interaction.state.tanks[0].position, p(2, 2))
         XCTAssertEqual(interaction.state.tanks[1].position, p(4, 2))
@@ -436,7 +426,7 @@ final class BoardInteractionEndOfMatchTests: XCTestCase {
         ])
         interaction.tapTile(p(4, 2))
         interaction.tapTile(p(5, 2))
-        let events = interaction.attack()
+        let events = interaction.tapAimedEnemyAgain()
 
         XCTAssertEqual(interaction.state.status, .finished(.win(.player, .annihilation)))
         XCTAssertTrue(interaction.isOver)
@@ -450,12 +440,10 @@ final class BoardInteractionEndOfMatchTests: XCTestCase {
         ])
         interaction.tapTile(p(4, 2))
         interaction.tapTile(p(5, 2))
-        interaction.attack()
+        interaction.tapAimedEnemyAgain()
 
         interaction.tapTile(p(4, 2))
         XCTAssertEqual(interaction.phase, .idle, "No selecting after the final shot")
-        XCTAssertFalse(interaction.canWait)
-        XCTAssertFalse(interaction.canAttack)
         XCTAssertFalse(interaction.canPass)
         XCTAssertTrue(interaction.pass().isEmpty)
     }
@@ -467,7 +455,7 @@ final class BoardInteractionEndOfMatchTests: XCTestCase {
         ])
         interaction.tapTile(p(4, 2))
         interaction.tapTile(p(5, 2))
-        interaction.attack()
+        interaction.tapAimedEnemyAgain()
         XCTAssertTrue(interaction.isOver)
 
         let fresh = try GameState.newGame(map: try GameMap(ascii: Maps.crossing))
@@ -493,130 +481,200 @@ final class BoardInteractionEndOfMatchTests: XCTestCase {
     }
 }
 
-/// The confirmation tap: a planned move only becomes real when the player taps
-/// the destination a second time, so a turn is never spent by accident.
-final class BoardInteractionConfirmationTests: XCTestCase {
+/// The Tap-flow diagram in `docs/design.md`, branch by branch. Tile1 is the tile
+/// the tank would act from: its own tile when selected, then whichever
+/// reachable tile was tapped last. Every enemy in range of Tile1 gets an X.
+final class BoardInteractionTapFlowTests: XCTestCase {
 
-    func testTappingTheDestinationAgainCommitsTheMove() throws {
+    // MARK: Selecting
+
+    func testSelectingMarksEnemiesInRangeOfWhereItStands() throws {
         var interaction = try makeInteraction([
-            tank(0, .player, .medium, 1, 2),
-            tank(1, .ai, .medium, 5, 4),
+            tank(0, .player, .medium, 3, 2),      // range 1-2
+            tank(1, .ai, .light, 4, 2),           // in range
+            tank(2, .ai, .light, 6, 4),           // not
         ])
-        interaction.tapTile(p(1, 2))
         interaction.tapTile(p(3, 2))
 
-        XCTAssertEqual(interaction.state.tanks[0].position, p(1, 2),
-                       "First tap only plans the move")
-        XCTAssertEqual(interaction.state.currentSide, .player, "...and does not spend the turn")
-
-        let events = interaction.tapTile(p(3, 2))      // the confirmation
-
-        XCTAssertEqual(interaction.state.tanks[0].position, p(3, 2), "Second tap commits it")
-        XCTAssertEqual(interaction.state.currentSide, .ai, "The turn is over")
-        XCTAssertEqual(interaction.phase, .idle)
-        XCTAssertTrue(events.contains(.moved(0, path: [p(1, 2), p(2, 2), p(3, 2)])))
+        XCTAssertEqual(interaction.plan?.destination, p(3, 2), "Tile1 starts as its own tile")
+        XCTAssertEqual(interaction.targetableTankIDs, [1], "Only the enemy in range gets an X")
     }
 
-    func testConfirmingCommitsAMoveOnlyAction() throws {
-        var interaction = try makeInteraction([
-            tank(0, .player, .medium, 1, 2),
-            tank(1, .ai, .medium, 4, 2),
-        ])
-        interaction.tapTile(p(1, 2))
-        interaction.tapTile(p(3, 2))      // ends up adjacent to the enemy
-        interaction.tapTile(p(3, 2))      // confirm
+    // MARK: Tile1 is reachable
 
-        XCTAssertEqual(interaction.state.tanks[1].hp, 10, "Confirming a move fires nothing")
-        XCTAssertEqual(interaction.state.tanks[0].ammo, 5)
-    }
-
-    func testTappingADifferentTileRepointsInsteadOfConfirming() throws {
-        var interaction = try makeInteraction([
-            tank(0, .player, .medium, 1, 2),
-            tank(1, .ai, .medium, 5, 4),
-        ])
-        interaction.tapTile(p(1, 2))
-        interaction.tapTile(p(3, 2))
-        let events = interaction.tapTile(p(1, 3))      // a different reachable tile
-
-        XCTAssertTrue(events.isEmpty, "Re-pointing commits nothing")
-        XCTAssertEqual(interaction.plan?.destination, p(1, 3))
-        XCTAssertEqual(interaction.state.currentSide, .player, "Still our turn")
-    }
-
-    func testConfirmingTheNewTileAfterRepointingCommitsThatOne() throws {
-        var interaction = try makeInteraction([
-            tank(0, .player, .medium, 1, 2),
-            tank(1, .ai, .medium, 5, 4),
-        ])
-        interaction.tapTile(p(1, 2))
-        interaction.tapTile(p(3, 2))
-        interaction.tapTile(p(1, 3))
-        interaction.tapTile(p(1, 3))
-
-        XCTAssertEqual(interaction.state.tanks[0].position, p(1, 3))
-        XCTAssertEqual(interaction.state.currentSide, .ai)
-    }
-
-    func testTappingAnUnmovedTankTwiceDoesNotSpendTheTurn() throws {
-        // Double-tapping a tank you just picked is far more likely to be a slip
-        // than a deliberate "stand still and do nothing". Wait exists for that.
-        var interaction = try makeInteraction([
-            tank(0, .player, .medium, 1, 2),
-            tank(1, .ai, .medium, 5, 4),
-        ])
-        interaction.tapTile(p(1, 2))
-        let events = interaction.tapTile(p(1, 2))
-
-        XCTAssertTrue(events.isEmpty)
-        XCTAssertEqual(interaction.state.currentSide, .player)
-        XCTAssertEqual(interaction.selectedTankID, 0, "Still selected, still waiting")
-    }
-
-    func testMoveThenAttackStillWorksWithoutConfirming() throws {
-        // The confirmation tap is for ending the turn on a move. Attacking after
-        // a move goes through the target instead, so both stay one tap.
+    func testTappingAReachableTileMakesItTile1AndMovesTheXsWithIt() throws {
         var interaction = try makeInteraction([
             tank(0, .player, .medium, 1, 2),
             tank(1, .ai, .medium, 5, 2),
         ])
         interaction.tapTile(p(1, 2))
-        interaction.tapTile(p(4, 2))      // drive into range
-        interaction.tapTile(p(5, 2))      // aim at the enemy
-        XCTAssertNotNil(interaction.attackPreview)
+        XCTAssertTrue(interaction.targetableTankIDs.isEmpty, "4 away from where it stands")
 
-        interaction.attack()
+        let events = interaction.tapTile(p(4, 2))
 
-        XCTAssertEqual(interaction.state.tanks[0].position, p(4, 2), "It moved")
-        XCTAssertEqual(interaction.state.tanks[1].hp, 6, "...and fired in the same turn")
+        XCTAssertTrue(events.isEmpty, "Choosing Tile1 commits nothing")
+        XCTAssertEqual(interaction.plan?.destination, p(4, 2))
+        XCTAssertEqual(interaction.targetableTankIDs, [1], "In range of Tile1, so it gets an X")
+        XCTAssertEqual(interaction.state.tanks[0].position, p(1, 2), "The tank has not moved")
     }
 
-    func testConfirmingWhileAimingCommitsTheMoveAndDropsTheShot() throws {
+    func testTappingTile1AgainMovesThereAndSpendsTheTank() throws {
+        // "User tap on Tile1 → move the tank to Tile1 and end."
+        var interaction = try makeInteraction([
+            tank(0, .player, .medium, 1, 2),
+            tank(1, .player, .light, 0, 0),
+            tank(2, .ai, .medium, 5, 4),
+        ])
+        interaction.tapTile(p(1, 2))
+        interaction.tapTile(p(3, 2))
+        let events = interaction.tapTile(p(3, 2))
+
+        XCTAssertEqual(events, [.moved(0, path: [p(1, 2), p(2, 2), p(3, 2)])])
+        XCTAssertEqual(interaction.state.tanks[0].position, p(3, 2))
+        XCTAssertTrue(interaction.state.hasActed(0), "Its go is spent")
+        XCTAssertEqual(interaction.phase, .idle, "Ready for the next tank")
+        XCTAssertEqual(interaction.currentSide, .player, "The light still owes an action")
+    }
+
+    func testTappingTheTankAgainHoldsPosition() throws {
+        // Tile1 is its own tile until another is chosen, so the same "tap
+        // Tile1 again" that moves a tank is how it stays put.
+        var interaction = try makeInteraction([
+            tank(0, .player, .medium, 1, 2),
+            tank(1, .player, .light, 0, 0),
+            tank(2, .ai, .medium, 5, 4),
+        ])
+        interaction.tapTile(p(1, 2))
+        interaction.tapTile(p(1, 2))
+
+        XCTAssertEqual(interaction.state.tanks[0].position, p(1, 2))
+        XCTAssertTrue(interaction.state.hasActed(0))
+        XCTAssertEqual(interaction.phase, .idle)
+    }
+
+    func testTappingTheTanksOwnTileAfterChoosingAnotherBringsTile1Home() throws {
+        var interaction = try makeInteraction([
+            tank(0, .player, .medium, 1, 2),
+            tank(1, .ai, .medium, 5, 4),
+        ])
+        interaction.tapTile(p(1, 2))
+        interaction.tapTile(p(3, 2))
+        let events = interaction.tapTile(p(1, 2))
+
+        XCTAssertTrue(events.isEmpty, "Moving Tile1 is not a commit")
+        XCTAssertEqual(interaction.plan?.destination, p(1, 2))
+        XCTAssertEqual(interaction.state.currentSide, .player)
+    }
+
+    // MARK: Enemies with an X
+
+    func testTheFirstTapOnAnXOnlyShowsThePreview() throws {
         var interaction = try makeInteraction([
             tank(0, .player, .medium, 1, 2),
             tank(1, .ai, .medium, 5, 2),
         ])
         interaction.tapTile(p(1, 2))
         interaction.tapTile(p(4, 2))
-        interaction.tapTile(p(5, 2))      // aimed
-        interaction.tapTile(p(4, 2))      // confirm the move instead
+        let events = interaction.tapTile(p(5, 2))
 
-        XCTAssertEqual(interaction.state.tanks[0].position, p(4, 2))
-        XCTAssertEqual(interaction.state.tanks[1].hp, 10, "The shot was never taken")
-        XCTAssertEqual(interaction.state.currentSide, .ai)
+        XCTAssertTrue(events.isEmpty, "A preview, not a shot")
+        XCTAssertEqual(interaction.aimedTargetID, 1)
+        XCTAssertEqual(interaction.attackPreview?.damage, 4)
+        XCTAssertEqual(interaction.state.tanks[1].hp, 10)
+        XCTAssertEqual(interaction.state.tanks[0].position, p(1, 2), "Nor a move")
     }
 
-    func testWaitStillEndsTheTurnWithoutAConfirmationTap() throws {
+    func testTheSecondTapOnTheSameEnemyMovesThenFires() throws {
+        // "User taps on an enemy with X → move Tank1 to Tile1 and then attack."
         var interaction = try makeInteraction([
             tank(0, .player, .medium, 1, 2),
-            tank(1, .ai, .medium, 5, 4),
+            tank(1, .ai, .medium, 5, 2),
         ])
         interaction.tapTile(p(1, 2))
-        interaction.tapTile(p(3, 2))
-        interaction.wait()
+        interaction.tapTile(p(4, 2))
+        interaction.tapTile(p(5, 2))
+        let events = interaction.tapTile(p(5, 2))
 
-        XCTAssertEqual(interaction.state.tanks[0].position, p(3, 2))
-        XCTAssertEqual(interaction.state.currentSide, .ai)
+        XCTAssertEqual(events.first, .moved(0, path: [p(1, 2), p(2, 2), p(3, 2), p(4, 2)]),
+                       "It drives first...")
+        XCTAssertTrue(events.contains(.attacked(attacker: 0, defender: 1, damage: 4, destroyed: false)),
+                      "...then fires")
+        XCTAssertEqual(interaction.state.tanks[0].position, p(4, 2))
+        XCTAssertEqual(interaction.state.tanks[1].hp, 6)
+        XCTAssertNil(interaction.attackPreview, "The X's and the aim are gone")
+    }
+
+    func testTappingADifferentXSwitchesTheAimWithoutFiring() throws {
+        var interaction = try makeInteraction([
+            tank(0, .player, .medium, 3, 2),
+            tank(1, .ai, .light, 4, 2),
+            tank(2, .ai, .light, 3, 3),
+        ])
+        interaction.tapTile(p(3, 2))
+        interaction.tapTile(p(4, 2))
+        let events = interaction.tapTile(p(3, 3))
+
+        XCTAssertTrue(events.isEmpty)
+        XCTAssertEqual(interaction.aimedTargetID, 2)
+        XCTAssertEqual(interaction.state.tanks[1].hp, 6, "The first target was never fired on")
+    }
+
+    func testChoosingAnotherTile1DropsTheAim() throws {
+        var interaction = try makeInteraction([
+            tank(0, .player, .medium, 3, 2),
+            tank(1, .ai, .light, 4, 2),
+        ])
+        interaction.tapTile(p(3, 2))
+        interaction.tapTile(p(4, 2))      // aim from where it stands
+        interaction.tapTile(p(1, 2))      // then choose a different Tile1
+
+        XCTAssertNil(interaction.aimedTargetID, "The aim was from the old Tile1")
+        XCTAssertEqual(interaction.plan?.destination, p(1, 2))
+    }
+
+    func testAnEnemyWithoutAnXIsOnlyDescribed() throws {
+        var interaction = try makeInteraction([
+            tank(0, .player, .medium, 1, 2),
+            tank(1, .ai, .medium, 5, 2),
+        ])
+        interaction.tapTile(p(1, 2))
+        interaction.tapTile(p(5, 2))      // out of range of Tile1
+
+        XCTAssertNil(interaction.aimedTargetID)
+        XCTAssertEqual(interaction.inspectedTankID, 1)
+        XCTAssertEqual(interaction.selectedTankID, 0)
+    }
+
+    // MARK: Tile1 is not reachable
+
+    func testTappingUnreachableGroundKeepsTheSelection() throws {
+        // "Do nothing. The selected tank is still being selected."
+        var interaction = try makeInteraction([
+            tank(0, .player, .medium, 0, 0),      // 3 move points
+            tank(1, .ai, .medium, 6, 4),
+        ])
+        interaction.tapTile(p(0, 0))
+        interaction.tapTile(p(2, 0))              // Tile1
+        let planBefore = interaction.plan
+
+        let events = interaction.tapTile(p(6, 0)) // 6 away: out of reach
+
+        XCTAssertTrue(events.isEmpty)
+        XCTAssertEqual(interaction.plan, planBefore, "Tile1 and the selection are untouched")
+    }
+
+    func testAnotherFriendlyTankIsNotReachableEither() throws {
+        var interaction = try makeInteraction([
+            tank(0, .player, .medium, 1, 2),
+            tank(1, .player, .light, 2, 2),
+            tank(2, .ai, .medium, 6, 4),
+        ])
+        interaction.tapTile(p(1, 2))
+        interaction.tapTile(p(2, 2))              // occupied by a friend
+
+        XCTAssertEqual(interaction.selectedTankID, 0, "Cancel is how to switch tanks")
+        XCTAssertEqual(interaction.plan?.destination, p(1, 2))
+        XCTAssertEqual(interaction.state.currentSide, .player)
     }
 }
 
@@ -755,8 +813,8 @@ final class BoardInteractionTurnTests: XCTestCase {
         XCTAssertEqual(interaction.pendingTankIDs, [0, 1])
 
         interaction.tapTile(p(0, 4))          // select
-        interaction.tapTile(p(0, 3))          // point the move
-        interaction.wait()                    // commit
+        interaction.tapTile(p(0, 3))          // Tile1
+        interaction.tapTile(p(0, 3))          // again: move there
 
         XCTAssertEqual(interaction.currentSide, .player, "Still Blue's turn")
         XCTAssertTrue(interaction.acceptsInput)
@@ -771,9 +829,9 @@ final class BoardInteractionTurnTests: XCTestCase {
             tank(2, .ai, .medium, 6, 0),
         ])
         interaction.tapTile(p(0, 4))
-        interaction.wait()
+        interaction.tapTile1Again()
         interaction.tapTile(p(1, 4))
-        interaction.wait()
+        interaction.tapTile1Again()
 
         XCTAssertEqual(interaction.currentSide, .ai)
         XCTAssertTrue(interaction.pendingTankIDs.isEmpty == false, "Red's tanks are pending now")
@@ -787,12 +845,12 @@ final class BoardInteractionTurnTests: XCTestCase {
             tank(2, .ai, .medium, 6, 0),
         ])
         interaction.tapTile(p(0, 4))
-        interaction.wait()
+        interaction.tapTile1Again()
 
         interaction.tapTile(p(0, 4))          // tap the tank that already moved
         XCTAssertNil(interaction.selectedTankID, "Its go is spent")
         XCTAssertEqual(interaction.inspectedTankID, 0, "...but the HUD still describes it")
-        XCTAssertFalse(interaction.canWait)
+        XCTAssertNil(interaction.plan)
     }
 
     func testPassGivesUpTheRestOfTheTurn() throws {
@@ -802,7 +860,7 @@ final class BoardInteractionTurnTests: XCTestCase {
             tank(2, .ai, .medium, 6, 0),
         ])
         interaction.tapTile(p(0, 4))
-        interaction.wait()
+        interaction.tapTile1Again()
         XCTAssertTrue(interaction.canPass)
 
         interaction.pass()
@@ -818,8 +876,8 @@ final class BoardInteractionTurnTests: XCTestCase {
         ])
         interaction.tapTile(p(5, 0))          // select
         interaction.tapTile(p(6, 0))          // aim at the enemy
-        XCTAssertTrue(interaction.canAttack)
-        interaction.attack()
+        XCTAssertNotNil(interaction.attackPreview)
+        interaction.tapAimedEnemyAgain()
 
         XCTAssertFalse(interaction.state.tanks[2].isAlive, "Target destroyed")
         XCTAssertEqual(interaction.currentSide, .player, "The light still owes an action")

@@ -55,12 +55,10 @@ final class AIOpponentTests: XCTestCase {
         // turn: that is exactly the hot-seat behaviour this has to suppress.
         interaction.tapTile(p(6, 0))
         XCTAssertNil(interaction.selectedTankID)
-        XCTAssertFalse(interaction.canWait)
+        interaction.tapTile(p(6, 0))          // and a second tap holds nothing either
 
         let before = interaction.state
         interaction.pass()
-        interaction.wait()
-        interaction.attack()
         XCTAssertEqual(interaction.state, before, "Nothing the player taps may spend Red's turn")
     }
 

@@ -54,22 +54,13 @@ public final class BattleScene: SKScene {
     /// applied. Input stays locked for the whole of it, including the delay.
     private var isOpponentThinking = false
 
-    /// True while a tank is rolling to a planned tile. A turn-based game should
-    /// not let the player change their mind halfway through a move, so input is
-    /// locked until it arrives.
-    private var isDriving = false
-
     /// Whether the board is busy and should swallow input.
-    private var isBusy: Bool { isAnimating || isDriving || isOpponentThinking }
-
-    /// The tank currently standing on a planned tile rather than its real one,
-    /// and the route it took to get there (starting at its real tile).
     ///
-    /// The rules cannot move it yet — a turn is one atomic action and the player
-    /// may still pick a target or cancel — so the sprite is driven ahead of the
-    /// model and this is the bookkeeping that keeps the two reconcilable.
-    private var previewTankID: TankID?
-    private var previewRoute: [Position] = []
+    /// Tanks only ever move on screen by replaying committed events, so the
+    /// sprites are never ahead of the rules and there is no separate "driving"
+    /// state to wait out. (There used to be one, and a drive it started on End
+    /// Turn could leave Red's turn never scheduled — the board locked for good.)
+    private var isBusy: Bool { isAnimating || isOpponentThinking }
 
     /// Shown under "OPERATION" in the HUD. The map has no name of its own yet,
     /// so the scene carries one.
@@ -166,14 +157,8 @@ public final class BattleScene: SKScene {
         hud = HUDNode(sceneSize: size, insets: safeAreaInsets, theme: theme, catalog: catalog)
         hud.operationName = operationName
         addChild(hud)
-        hud.onAttack = { [weak self] in self?.commit { $0.attack() } }
-        hud.onWait = { [weak self] in self?.commit { $0.wait() } }
         hud.onPass = { [weak self] in self?.commit { $0.pass() } }
-        hud.onCancel = { [weak self] in
-            guard let self, !self.isAnimating else { return }
-            self.interaction.cancel()
-            self.refresh()
-        }
+        hud.onCancel = { [weak self] in self?.cancelSelection() }
 
         gameOver = GameOverNode(sceneSize: size, theme: theme)
         gameOver.onRematch = { [weak self] in self?.startNewMatch() }
@@ -249,6 +234,14 @@ public final class BattleScene: SKScene {
         }
     }
 
+    /// The Cancel button: drops the selection from any stage. `refresh` then
+    /// drives a tank that had already rolled to a confirmed tile back home.
+    private func cancelSelection() {
+        guard !isAnimating else { return }
+        interaction.cancel()
+        refresh()
+    }
+
     /// Runs one of the HUD's committing actions and animates what came out of it.
     ///
     /// An empty event list is NOT the same as "nothing happened": a tank told
@@ -268,24 +261,14 @@ public final class BattleScene: SKScene {
         present(events)
     }
 
-    /// Animates a committed action, from whichever path produced it: a HUD
-    /// button, the confirmation tap on the destination tile, or Red's brain.
-    /// Safe with an empty list, which just redraws and hands on.
+    /// Animates a committed action, from whichever path produced it: a
+    /// confirming tap, End Turn, or Red's brain. Safe with an empty list, which
+    /// just redraws and hands on.
     private func present(_ events: [GameEvent]) {
         isAnimating = true
         hud.setBusy(true)
         board.clearHighlights()
         board.setSelectedTank(nil)
-
-        // If the committed action really moved the previewed tank, it is already
-        // standing on the destination and the `.moved` event has nothing left to
-        // animate. Otherwise (Pass, or a Wait that stayed put) the plan came to
-        // nothing, so drive it home.
-        if previewTankID.map({ events.moves(tankID: $0) }) == true {
-            settlePreviewedTank()
-        } else {
-            recallPreviewedTank()
-        }
         board.play(events, state: interaction.state) { [weak self] in
             guard let self else { return }
             self.isAnimating = false
@@ -310,7 +293,7 @@ public final class BattleScene: SKScene {
     /// busy calls it again when it finishes.
     private func advanceAIIfNeeded() {
         guard let opponent, interaction.isAITurn,
-              !isOpponentThinking, !isAnimating, !isDriving else { return }
+              !isOpponentThinking, !isAnimating else { return }
 
         isOpponentThinking = true
         hud.setBusy(true)
@@ -344,9 +327,6 @@ public final class BattleScene: SKScene {
     private func startNewMatch() {
         guard let state = try? newGame() else { return }
         cancelScheduledAITurn()
-        isDriving = false
-        previewTankID = nil
-        previewRoute = []
         interaction.reset(to: state)
         gameOver.hide()
         board.sync(with: state)
@@ -359,21 +339,21 @@ public final class BattleScene: SKScene {
     /// Pushes the interaction's state into the board and the HUD. Cheap enough
     /// to call after every tap.
     private func refresh() {
-        updatePreviewDrive()
-        board.sync(with: interaction.state, keepingPositionOf: previewTankID)
+        board.sync(with: interaction.state)
         board.setSelectedTank(interaction.selectedTankID)
         // The inspected tank is always someone other than the selected one —
         // selecting clears it — and an aimed target already gets the attack
         // ring, so this is the only marker it needs.
         board.setInspectedTank(interaction.inspectedTankID)
 
-        let attackTiles = interaction.targetableTankIDs.compactMap {
+        // The yellow X: every enemy the tank could hit from Tile1.
+        let targetTiles = interaction.targetableTankIDs.compactMap {
             interaction.state.tank($0)?.position
         }
         let aimedTile = interaction.aimedTargetID.flatMap { interaction.state.tank($0)?.position }
         board.showHighlights(moveTiles: interaction.moveHighlights,
-                             attackTiles: attackTiles,
-                             path: interaction.plannedPath,
+                             targetTiles: targetTiles,
+                             path: interaction.pathHint,
                              aimedTile: aimedTile)
 
         hud.update(with: interaction)
@@ -384,64 +364,6 @@ public final class BattleScene: SKScene {
                 gameOver.show(result: result, in: interaction.state)
             }
         }
-    }
-
-    // MARK: - Driving the selected tank to its planned tile
-
-    /// Rolls the selected tank from wherever it is standing to the tile the
-    /// player just picked. `PreviewRoute` works out the tiles still to drive.
-    private func updatePreviewDrive() {
-        guard let plan = interaction.plan else {
-            recallPreviewedTank()
-            return
-        }
-        if previewTankID != plan.tankID {
-            recallPreviewedTank()         // a different tank was picked; send the old one home
-            previewTankID = plan.tankID
-        }
-
-        // An empty planned path means "staying put", i.e. the route is just the
-        // tank's own tile.
-        let current = previewRoute.isEmpty ? [plan.origin] : previewRoute
-        let planned = interaction.plannedPath
-        let target = planned.isEmpty ? [plan.origin] : planned
-        previewRoute = target
-
-        drive(tankID: plan.tankID, through: PreviewRoute.tiles(from: current, to: target))
-    }
-
-    /// Drives the previewed tank back to the tile it really occupies and forgets
-    /// it, for a cancelled selection or a switch to another tank.
-    private func recallPreviewedTank() {
-        if let tankID = previewTankID, previewRoute.count > 1 {
-            drive(tankID: tankID, through: Array(previewRoute.reversed().dropFirst()))
-        }
-        previewTankID = nil
-        previewRoute = []
-    }
-
-    /// Rolls a tank through `tiles`, holding input until it arrives.
-    private func drive(tankID: TankID, through tiles: [Position]) {
-        guard !tiles.isEmpty else { return }
-        isDriving = true
-        hud.setBusy(true)
-        board.drivePreview(tankID: tankID, through: tiles) { [weak self] in
-            guard let self else { return }
-            self.isDriving = false
-            self.hud.setBusy(false)
-        }
-    }
-
-    /// Parks the previewed tank on its planned tile and forgets it, so the
-    /// committed `.moved` event does not drive the same route a second time.
-    private func settlePreviewedTank() {
-        if let tankID = previewTankID, let tile = previewRoute.last {
-            board.finishPreview(tankID: tankID, at: tile)
-        }
-        // finishPreview cuts the drive short, so its completion never runs.
-        isDriving = false
-        previewTankID = nil
-        previewRoute = []
     }
 
     // MARK: - Platform touch plumbing
@@ -472,10 +394,21 @@ public final class BattleScene: SKScene {
         commit { $0.pass() }
     }
 
-    /// Spends the selected tank's action with its planned move only, exactly
-    /// as the Wait button does, for tests.
-    public func simulateWait() {
-        commit { $0.wait() }
+    /// Drops the selection exactly as the Cancel button does, for tests.
+    public func simulateCancel() {
+        cancelSelection()
+    }
+
+
+    /// The tile a tank is drawn on. It matches `currentState` whenever nothing
+    /// is animating — tanks never move on screen ahead of the rules. For tests.
+    public func tileShowing(tankID: TankID) -> Position? {
+        board.tileShowing(tankID: tankID)
+    }
+
+    /// Tiles carrying the yellow X right now. For tests.
+    public func targetMarkTiles() -> [Position] {
+        board.targetMarkTiles()
     }
 
     /// Whether the board is waiting on Red rather than on the player.
@@ -490,12 +423,3 @@ public final class BattleScene: SKScene {
     public var isAcceptingInput: Bool { !isBusy && !interaction.isOver }
 }
 
-extension Array where Element == GameEvent {
-    /// Whether this batch of events drove the given tank anywhere.
-    func moves(tankID: TankID) -> Bool {
-        contains {
-            if case .moved(let id, _) = $0 { return id == tankID }
-            return false
-        }
-    }
-}

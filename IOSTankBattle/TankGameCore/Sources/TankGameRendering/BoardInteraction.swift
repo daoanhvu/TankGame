@@ -1,11 +1,22 @@
 import TankGameCore
 import TankGameAI
 
-/// The tap-driven turn flow, as a pure state machine:
+/// The tap-driven turn flow, as a pure state machine. It implements the
+/// "Tap-flow" diagram in `docs/design.md`; everything is a tap, and only
+/// Cancel and End Turn are buttons.
 ///
-///     idle --tap own tank--> planning --tap tile--> planning (new destination)
-///                            |  \--tap enemy in range--> aiming --Attack--> committed
-///                            \--Wait--> committed
+///     idle --tap own tank--> planning (Tile1 = its own tile)
+///     planning --tap reachable tile--> planning (that tile is Tile1)
+///     planning --tap Tile1 again--> committed: move there (or hold, if Tile1
+///                                   is the tank's own tile)
+///     planning --tap enemy with X--> aiming (damage preview shown)
+///     aiming --tap the SAME enemy again--> committed: move to Tile1, then fire
+///     aiming --tap Tile1 / another X / another tile--> as from planning
+///     any --Cancel--> idle
+///
+/// An X marks every enemy the tank could hit from Tile1, so the targets always
+/// follow the tile the player is pointing at. The tank never moves on screen
+/// before the action is committed: the `.moved` event is what drives it.
 ///
 /// It owns the `GameState` and is the only thing that applies actions, so the
 /// scene never has to reason about rules. No SpriteKit here on purpose: the
@@ -17,15 +28,18 @@ import TankGameAI
 /// `state.currentSide` says it is gets to pick a tank.
 public struct BoardInteraction: Equatable {
 
-    /// A move being planned. The tank has NOT moved; `destination` is where the
-    /// player is currently pointing it.
+    /// A move being planned — "Tile1" in the Tap-flow diagram. Nothing has
+    /// moved, on screen or in the rules, until a confirming tap commits it.
     public struct MovePlan: Equatable {
         public let tankID: TankID
         public let origin: Position
+        /// Tile1: where the tank would act from. Starts as its own tile, so
+        /// enemies already in range are marked the moment it is selected.
         public var destination: Position
         /// Tiles the tank may stop on, with their movement cost.
         public let reachable: [Position: Int]
 
+        /// Tile1 is somewhere other than the tank's own tile.
         public var hasMoved: Bool { destination != origin }
     }
 
@@ -100,13 +114,20 @@ public struct BoardInteraction: Equatable {
         return plan.reachable.keys.filter { $0 != plan.origin }
     }
 
-    /// The route the tank would drive, for a path hint. Empty if it stays put.
+    /// The route from the tank's tile to Tile1. Empty while Tile1 is the
+    /// tank's own tile.
     public var plannedPath: [Position] {
         guard let plan, plan.hasMoved, let tank = state.tank(plan.tankID) else { return [] }
         return Rules.path(for: tank, to: plan.destination, in: state) ?? []
     }
 
-    /// Enemies the selected tank could hit from its planned destination.
+    /// The route to draw as a hint. The tank itself stays put until the move
+    /// is committed, so this line is the only sign of where it is going.
+    public var pathHint: [Position] { plannedPath }
+
+    /// Enemies the selected tank could hit from Tile1 — the ones that get an
+    /// X. Computed through `tankAfterMove`, so driving onto the supply tile
+    /// rearms the shot before it is taken, exactly as the rules will.
     public var targetableTankIDs: [TankID] {
         guard let plan, let tank = state.tank(plan.tankID) else { return [] }
         let shooter = Rules.tankAfterMove(tank, to: plan.destination, in: state)
@@ -131,19 +152,6 @@ public struct BoardInteraction: Equatable {
         state.pendingTanks(of: currentSide).map(\.id)
     }
 
-    /// "Wait" spends this tank's action with the move only; always available
-    /// once a tank is selected, including when it has not moved (a deliberate
-    /// skip). The side's turn carries on with whatever tanks are left.
-    public var canWait: Bool {
-        guard acceptsInput else { return false }
-        return plan != nil
-    }
-
-    public var canAttack: Bool {
-        guard acceptsInput else { return false }
-        return aimedTargetID != nil
-    }
-
     public var canPass: Bool { acceptsInput }
 
     // MARK: - Input
@@ -159,62 +167,45 @@ public struct BoardInteraction: Equatable {
             return []
         }
 
-        // Tapping an enemy that is in range from the planned tile aims at it.
-        // Out of range there is nothing to aim, so the tap inspects instead of
-        // being swallowed.
+        // An enemy with an X: the first tap shows what the shot would do, a
+        // second tap on the same enemy moves to Tile1 and fires. An enemy
+        // without an X cannot be hit from Tile1, so the tap only describes it.
         if let enemy = state.tank(at: tile), enemy.side != currentSide {
-            if targetableTankIDs.contains(enemy.id) {
-                aim(plan: plan, at: enemy.id)
-            } else {
+            guard targetableTankIDs.contains(enemy.id) else {
                 inspectedTankID = enemy.id
+                return []
             }
+            if aimedTargetID == enemy.id {
+                return commit(TankCommand(tankID: plan.tankID, destination: plan.destination,
+                                          targetID: enemy.id))
+            }
+            aim(plan: plan, at: enemy.id)
             return []
         }
 
-        // The confirmation tap. The tank has already driven here, and tapping the
-        // tile a second time is the player taking responsibility for the move:
-        // it commits and ends the turn.
+        // Tile1 again: "just move" — move there and end this tank's go. When
+        // Tile1 is the tank's own tile, that is holding position. Any aim is
+        // dropped: the player chose the move over the shot.
         if tile == plan.destination {
-            // A second tap on a tank that has not moved is not a confirmation of
-            // anything, and silently burning a turn would be worse than ignoring
-            // it. Staying put deliberately is what the Wait button is for.
-            guard plan.hasMoved else { return [] }
             return commit(TankCommand(tankID: plan.tankID, destination: plan.destination))
         }
 
-        // Any other reachable tile re-points the move, and drops any aim because
-        // range depends on where we stop. The tank drives to the new tile.
+        // Another reachable tile becomes Tile1. The X's are recomputed from
+        // it, so any aim from the old Tile1 no longer applies.
         if plan.reachable[tile] != nil {
             var updated = plan
             updated.destination = tile
             phase = .planning(updated)
-            // Back to driving our own tank, so stop describing someone else's.
+            // Back to steering our own tank, so stop describing someone else's.
             inspectedTankID = nil
             return []
         }
 
-        // Everything else leaves the plan alone — cancelling and switching tanks
-        // go through the Cancel button, so a stray tap can never throw away a
-        // planned move. A tank standing there is still worth describing.
-        if let other = state.tank(at: tile), other.isAlive {
-            inspectedTankID = other.id
-        }
+        // Not reachable: nothing happens and the tank stays selected. Cancel is
+        // the way to drop it or switch tanks. A tank standing there is still
+        // worth describing.
+        inspect(tankAt: tile)
         return []
-    }
-
-    /// Commits the planned move without firing.
-    @discardableResult
-    public mutating func wait() -> [GameEvent] {
-        guard let plan, acceptsInput else { return [] }
-        return commit(TankCommand(tankID: plan.tankID, destination: plan.destination))
-    }
-
-    /// Commits the planned move and the attack on the aimed target.
-    @discardableResult
-    public mutating func attack() -> [GameEvent] {
-        guard case .aiming(let plan, let targetID, _) = phase, acceptsInput else { return [] }
-        return commit(TankCommand(tankID: plan.tankID, destination: plan.destination,
-                                  targetID: targetID))
     }
 
     /// Gives up the rest of the side's turn, leaving every tank still waiting
@@ -300,6 +291,14 @@ public struct BoardInteraction: Equatable {
         let shooter = Rules.tankAfterMove(tank, to: plan.destination, in: state)
         let preview = Rules.preview(attacker: shooter, target: target, in: state)
         phase = .aiming(plan, targetID: targetID, preview: preview)
+    }
+
+    /// Describes whatever tank stands on `tile`, other than the selected one
+    /// (which the HUD already describes).
+    private mutating func inspect(tankAt tile: Position) {
+        if let other = state.tank(at: tile), other.isAlive, other.id != selectedTankID {
+            inspectedTankID = other.id
+        }
     }
 
     /// Applies a command. An `IllegalAction` here would mean the UI offered

@@ -24,9 +24,9 @@ final class CommandBarTests: XCTestCase {
 
     func testEveryCommandIsTappableAcrossItsWholeCell() throws {
         let (_, hud) = try makeScene()
-        let expected = [HUDNode.ButtonID.attack, HUDNode.ButtonID.wait,
-                        HUDNode.ButtonID.cancel, HUDNode.ButtonID.pass]
-        let cellWidth = 402.0 / 4.0
+        // Moving and attacking are taps on the board; only two commands remain.
+        let expected = [HUDNode.ButtonID.cancel, HUDNode.ButtonID.pass]
+        let cellWidth = 402.0 / 2.0
         // A band inside each cell, away from the icon and the caption.
         let y = 34.0 + 10.0
 
@@ -52,12 +52,12 @@ final class CommandBarTests: XCTestCase {
                                           map: try GameMap(ascii: Maps.crossing))
         hud.update(with: BoardInteraction(state: state))
 
-        // Nothing is selected, so Attack, Wait and Cancel are all unavailable.
-        let cellWidth = 402.0 / 4.0
+        // Nothing is selected, so there is nothing to cancel.
+        let cellWidth = 402.0 / 2.0
         let y = 34.0 + 10.0
         XCTAssertNil(hud.button(atScenePoint: CGPoint(x: cellWidth * 0.5, y: y)))
-        XCTAssertEqual(hud.button(atScenePoint: CGPoint(x: cellWidth * 3.5, y: y))?.identifier,
-                       HUDNode.ButtonID.pass, "Pass is always available")
+        XCTAssertEqual(hud.button(atScenePoint: CGPoint(x: cellWidth * 1.5, y: y))?.identifier,
+                       HUDNode.ButtonID.pass, "End Turn is always available")
     }
 
     func testSectorReadsAsAMapReference() {
