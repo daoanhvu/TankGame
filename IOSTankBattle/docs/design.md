@@ -1,7 +1,7 @@
 # Tank Strategy Game — Design Document
 
 **Status:** Milestones 1 and 2 complete. Milestone 3 (AI) not started.
-**Last updated:** 2026-10-04
+**Last updated:** 2026-10-04 · §4 tap flow updated 2026-10-14
 
 This document explains how the game is built and, more importantly, *why* it is built that way.
 The frozen phase‑1 rules themselves live in `CLAUDE.md`; this document does not repeat them, it
@@ -12,7 +12,8 @@ explains how they are implemented and which decisions are load‑bearing.
 ## 1. What exists today
 
 A playable hot‑seat iOS game: two players share one device, five tanks each, on a 12×10 grid.
-Tap a tank, see where it can go, move it, pick a target, read the damage preview, attack or wait.
+Tap a tank, tap a tile to point it there (Tile1), and every enemy in range of Tile1 gets a yellow X.
+Tap Tile1 again to move, or tap an X'd enemy to read the damage preview and again to move and fire.
 The match ends by annihilation or on HP at the 40‑round limit.
 
 | Layer | Target | Lines | Imports |
@@ -143,98 +144,125 @@ to crossing as well as stopping.
 ### 4.1 Why the scene lives in the library, not the app target
 
 Everything except `GameViewController` is in `TankGameRendering`. That is what makes the tap flow
-unit‑testable — 30 of the 101 tests drive `BoardInteraction` with no SpriteKit involved. Code in the
+unit‑testable — 55 of the 243 tests drive `BoardInteraction` with no SpriteKit involved. Code in the
 app target can only be tested through a UI test harness, which is slow and flaky.
 
 The app target is a host: it owns the `SKView`, builds a `BattleScene` and feeds it safe‑area insets.
 
 ### 4.2 `BoardInteraction` — the tap flow as a pure state machine
 
-This is the heart of milestone 2 and the file to read first.
+This is the heart of the UI and the file to read first. It implements the **Tap-flow** below.
 
-The flow is specified by the **Tap-flow** diagram below; `BoardInteraction` implements it. As states:
-
-```
-idle ──tap own tank──▶ planning (Tile1 = its own tile; X on every enemy in range of Tile1)
-planning ──tap reachable tile──▶ planning (that tile is Tile1; X's recomputed, tank stays put)
-planning ──tap Tile1 again──▶ committed: move there and end its go (hold, if Tile1 is its own tile)
-planning ──tap enemy with X──▶ aiming (damage preview in the status line)
-aiming ──tap the SAME enemy again──▶ committed: move to Tile1, then fire
-aiming ──tap Tile1 / another X / another tile──▶ as from planning
-any ──Cancel──▶ idle                            End Turn ──▶ the rest of the side's turn is given up
-```
+**Tile1** is the tile the selected tank would act from. It starts as the tile the tank stands on and
+becomes whichever reachable tile the player tapped last. Every enemy in attack range of Tile1 carries a
+yellow X. Moving, attacking and holding position are all taps; the command bar has only **Cancel** and
+**End Turn**.
 
 ```plantuml Tap-flow
 @startuml
 start
-:User selects a tank, let name it Tank1
-:User taps on a tile, let name it Tile1
-
-if (Tile1 is reachable by Tank1) then (yes)
-  if (There are some enemies in attack range of Tank1 from Tile1) then (yes)
-    :Let say the list of enemies in attack range of Tank1 from Tile1 is ATTACKABLE_ENEMIES
-    loop for each enemy in ATTACKABLE_ENEMIES
-      :Draw a yellow X right above enemy
-    end
-    
-    if (User taps on an enemy with X) then (attack)
-      // User confirm to move Tank1 to Tile1 and attack the enemy tank with X
-      :Remove X from enemies
-      :Move tank Tank1 to tile Tile1 and then attack the selected enemy
-    elseif (User tap on Tile1) then (just move)
-      // User confirm just moving the tank Tank1 to tile Tile1 and end.
-      :Remove X from enemies
-      :Move the tank Tank1 to Tile1
-    else
-      //
+:User selects a tank, let name it Tank1;
+:Tile1 = the tile Tank1 stands on;
+repeat
+  :ATTACKABLE_ENEMIES = the enemies in attack range of Tank1 from Tile1;
+  :Draw a yellow X on each enemy in ATTACKABLE_ENEMIES;
+  :User taps on a tile, let name it T;
+  if (T holds an enemy with X?) then (yes)
+    if (Is it the enemy already aimed at?) then (yes: attack)
+      :Remove X from enemies;
+      :Move Tank1 to Tile1, then attack the enemy;
+      stop
+    else (no)
+      :Aim at it and show the damage preview
+      (incl. the counterattack) in the status line;
     endif
-
+  elseif (T is Tile1?) then (yes: just move)
+    :Remove X from enemies;
+    :Move Tank1 to Tile1
+    (hold position if Tile1 is Tank1's own tile);
+    stop
+  elseif (T is reachable by Tank1?) then (yes)
+    :Tile1 = T, and drop any aim;
   else (no)
+    :Do nothing. The selected tank is still being selected
+    (an enemy without X, or a friend, on T is described in the HUD);
   endif
-else (no)
-  :Do nothing
-  :The selected tank is still being selected
-endif
+repeat while (Cancel pressed?) is (no) not (yes)
+:Deselect Tank1;
 stop
 @enduml
 ```
 
-How the diagram's open branches were filled in (agreed with the author):
+The same flow as the states `BoardInteraction.Phase` actually has:
 
-- **Everything is a tap.** The command bar has only Cancel and End Turn. Moving, attacking and holding
-  position are all second taps: Tile1 again moves (or holds), the same X'd enemy again fires.
-- **X's appear on selection.** Tile1 starts as the tank's own tile, so enemies already in range are
-  marked straight away; attacking without moving is "select, tap the X, tap it again".
-- **The first tap on an X previews.** The status line shows damage and counterattack; the second tap on
-  the same enemy commits. Tapping a different X switches the aim; tapping another tile moves Tile1 and
-  drops the aim (range depends on where the tank stops).
-- **With no enemy in range of Tile1**, tapping Tile1 again moves the tank, same as "just move".
-- **Holding position spends the go.** Tapping the tank twice is Tile1-again with Tile1 = its own tile.
-  The old guard that ignored a double tap on a tank as a slip is gone, since there is no Wait button.
+| From | Tap | To |
+|---|---|---|
+| `idle` | own tank that has not acted yet | `planning`, Tile1 = its own tile |
+| `idle` | any other tank | `idle`; the HUD describes that tank |
+| `planning` / `aiming` | a reachable tile other than Tile1 | `planning`, Tile1 = that tile (aim dropped) |
+| `planning` / `aiming` | Tile1 | **commit** move-only; holding position if Tile1 is the tank's own tile |
+| `planning` / `aiming` | an enemy with an X, not yet aimed at | `aiming` that enemy; damage preview shown |
+| `aiming` | the aimed enemy again | **commit** move to Tile1, then attack |
+| `planning` / `aiming` | anything else | unchanged; a tank there is described in the HUD |
+| any | **Cancel** | `idle` |
+| any | **End Turn** | the rest of the side's turn is given up (`.pass`) |
+
+A commit spends that tank's go and returns to `idle`; the side's turn carries on until every tank has
+acted or End Turn is pressed (see `CLAUDE.md`). Tanks that have acted are greyed out and cannot be
+selected again this turn — tapping one only describes it.
+
+**What the player sees at each step.** Nothing has a button, so the status line is the instructions:
+
+| State | On the board | Status line |
+|---|---|---|
+| nothing selected | — | "Blue to move — N units awaiting orders" |
+| Tile1 = own tile, enemies in range | move tiles, X's | "Tap an X to aim, a tile to move, or the tank to hold" |
+| Tile1 = own tile, none in range | move tiles | "Tap a tile to move, or the tank again to hold" |
+| Tile1 elsewhere, enemies in range | move tiles, path to Tile1 (pulsing dot), X's | "Tap an X to aim, or the marked tile again to move" |
+| Tile1 elsewhere, none in range | move tiles, path to Tile1 (pulsing dot) | "Tap the marked tile again to move there" |
+| aiming | as above, plus a reticle on the aimed enemy | "Deal 4 to Light (6 → 2 HP) · take 3 back · tap again to fire" |
+| Red's turn | Red's moves, one tank at a time | "Red is moving… · N units to go" |
+
+How the original sketch's open branches were filled in (agreed with the author):
+
+- **X's appear on selection.** Tile1 starts as the tank's own tile, so attacking without moving is
+  "select, tap the X, tap it again".
+- **The first tap on an X previews; the second fires.** The damage preview — including whether the
+  counterattack would destroy you — is shown before anything is committed. Tapping a different X
+  switches the aim; choosing another Tile1 drops it, because range depends on where the tank stops.
+- **With no enemy in range of Tile1**, tapping Tile1 again moves the tank ("just move").
+- **Holding position spends the go.** Tapping the tank twice is "Tile1 again" with Tile1 = its own tile.
+  There is no Wait button, so the old guard that ignored a double tap on a tank as a slip is gone.
+- **Switching tanks goes through Cancel.** Another friendly tank's tile is not reachable, so tapping it
+  leaves the selection alone (and describes it), exactly like any other unreachable tile.
 - **Nothing moves until the commit.** The tank stays put while Tile1 is chosen; the committed `.moved`
-  event is what drives it (see §4.5).
+  event is what drives it (§4.5).
 
 It owns the `GameState` and is **the only thing that calls `Rules.apply`**. The scene never reasons
 about rules; it asks `BoardInteraction` what to draw and forwards taps.
 
 Design points:
 
-- **Planning never mutates the game.** Tile1 is a field on `MovePlan`; the real tank does not move
-  until the confirming tap. Cancel is therefore free.
-- **Re‑pointing the move drops the aim.** Range depends on where you stop, so a new destination
-  invalidates the target. Enforced in `tapTile`, tested explicitly.
+- **Planning never mutates the game.** Tile1 is `MovePlan.destination`; the real tank does not move
+  until a confirming tap. Cancel is therefore free.
 - **Targets are computed from Tile1**, via `Rules.tankAfterMove`, so the X's and the damage preview
-  already account for a supply refill.
-- **`tapTile` can end the turn.** A confirming tap returns the committed events, so every caller
-  must animate them. `BattleScene.tapBoard` is the single entry point for that, shared by real taps
-  and `simulateTap`, because an earlier version let the test hook drop the events and the board
-  silently desynced from the model.
+  already account for a supply refill: a dry tank pointed at its own supply tile can already aim.
+- **A confirming tap commits the whole action** — move and optional attack — as one `TankCommand`, so
+  the rules see exactly what the AI would send. There is no half-committed state to get stuck in.
+- **`tapTile` can end the turn.** A confirming tap returns the committed events, so every caller must
+  animate them. `BattleScene.tapBoard` is the single entry point for that, shared by real taps and
+  `simulateTap`, because an earlier version let the test hook drop the events and the board silently
+  desynced from the model.
+- **An empty event list is not "nothing happened".** Holding position produces no events at all (no
+  `.moved`, and `.turnBegan` only fires when the side changes). The scene tells a commit from a
+  declined tap by whether the state changed, not by whether there is anything to animate.
 - **Illegal commits clear the selection instead of trapping.** If the UI ever offers something the
   rules reject, `commit` swallows it and resets. A dead‑end selection the player cannot escape would
   be worse than a no‑op.
 
-Hot‑seat falls out for free: the only gate is `tank.side == state.currentSide`. Milestone 3 replaces
-the second player by feeding the AI's chosen `Action` through `Rules.apply` and calling `reset(to:)`.
+Hot‑seat falls out for free: with `aiSide == nil` the only gate is `tank.side == state.currentSide`.
+With `aiSide` set, every tap is refused on the AI's turn (`acceptsInput`) and the scene feeds the AI's
+actions through `takeAIAction(with:)` instead.
 
 ### 4.3 Coordinates
 
@@ -252,7 +280,11 @@ taps by one row.
 
 ### 4.4 Drawing
 
-`BoardNode` holds four layers by z‑order: terrain (0), highlights (2), tanks (10), effects (20).
+`BoardNode` holds five layers by z‑order: terrain (0), highlights (2: move tiles, path to Tile1),
+tanks (10), markers (15: the yellow X) and effects (20). The X has its own layer because it is drawn
+*on top of* the tank it marks — on the highlight layer it would sit underneath the sprite. It is a
+yellow stroke over a dark one so it reads on any tank or terrain; colours are `BoardTheme.targetMark`
+and `targetMarkOutline`.
 
 All game art goes through `SpriteCatalog`, never `SKSpriteNode(imageNamed:)`. A missing image yields
 a placeholder shape, so a partial art set is always playable and never shows a red X.
@@ -260,7 +292,7 @@ a placeholder shape, so a partial art set is always playable and never shows a r
 milestone 4 is done when it returns empty.
 
 Overlays are drawn in code, never as images, per the art rules: HP bars, ammo pips, selection ring,
-tile highlights, path hint. They live in `TankSprite` and `BoardTheme`. This keeps them correct when
+tile highlights, path hint, the yellow X, the aim reticle. They live in `TankSprite` and `BoardTheme`. This keeps them correct when
 the placeholder shapes are replaced by real sprites.
 
 `BoardNode.play(events:state:completion:)` replays an event list by chaining completions, then syncs
@@ -272,6 +304,10 @@ the end means a dropped or interrupted animation cannot desynchronise the board 
 A tank never moves on screen before its action is committed: the `.moved` event from `Rules.apply` is
 what drives it, through the same `BoardNode.play` path the AI's moves use. The sprites are therefore
 never ahead of the rules, and the only busy states are "animating events" and "Red is thinking".
+
+Each type drives at its own speed (`BoardNode.driveSpeed`): the light darts at 0.10 s per tile, the
+medium rolls at 0.16, the artillery lumbers at 0.24. Slower types also have fewer move points, so every
+type's longest move takes about half a second and no turn drags.
 
 There used to be a second mechanism that drove the *sprite* ahead of the model while a move was being
 planned (`previewTankID`, `PreviewRoute`, `BoardNode.drivePreview`). It was removed with the Tap-flow,
@@ -286,7 +322,11 @@ busy is responsible for asking again.
 
 ### 4.6 Input gating
 
-`BattleScene` ignores board taps while `isAnimating`. The HUD gets first refusal on every tap, then
+`BattleScene` ignores board taps while it is busy: animating committed events, or waiting out Red's
+think delay (`isAcceptingInput` is the public "ready for a tap" signal). On Red's turn
+`BoardInteraction` refuses every tap as well, so the two gates never have to agree on timing. Planning
+— choosing Tile1, aiming — never makes the scene busy, because nothing animates until a commit. The
+HUD gets first refusal on every tap, then
 the game‑over overlay, then the board. Button hit‑testing walks up from the hit node because taps
 land on a button's background or label, not the button itself — one shared `ButtonNode.hitTest`
 rather than three hand‑rolled ancestor walks.
@@ -310,9 +350,9 @@ storyboard's 375×667 instead of the device.
 | SupplyTests | 5 | Refill on arrival only, leave‑and‑return, refill‑then‑fire, enemy exclusion |
 | TurnFlowTests / EndConditionTests | 11 | Alternation, rounds, annihilation, HP at limit, draw |
 | Model + config suites | 16 | Parsing, validation, JSON round trip |
-| BoardInteraction* | 39 | The whole tap flow, hot‑seat alternation, end‑of‑match lockout |
+| BoardInteraction* | 55 | The whole tap flow: the Tap-flow branch by branch (`BoardInteractionTapFlowTests`), aiming and previews, commits, inspection, multi-tank turns, hot‑seat, end‑of‑match lockout |
+| BattleSceneMoveTests / BattleSceneAITests | 3 / 7 | The scene on a real SpriteKit clock: the tank stays put until Tile1 is tapped again, the X lands on the right tanks, Cancel, Red's turn after End Turn |
 | BoardLayoutTests | 7 | Grid↔point round trip, edge ownership, fit scaling |
-| PreviewRouteTests | 9 | Route stitching: extend, shorten, diverge, cancel, single steps |
 | SpriteCatalog / AssetName | 6 | Placeholder fallback, asset naming |
 
 Conventions worth keeping:
@@ -325,9 +365,10 @@ Conventions worth keeping:
   as targets, the round‑limit boundary, and the refill‑then‑fire interaction all have dedicated tests
   because all of them were wrong at some point.
 
-Visual behaviour was verified by running on the simulator and screenshotting each state (board,
-selection + highlights + path, damage preview, game over). That is not automated; it is a manual step
-before calling a rendering change done.
+Where the tank is drawn and which tiles carry an X are asserted by the scene tests above
+(`BattleScene.tileShowing(tankID:)`, `targetMarkTiles()`). What it *looks* like is still a manual
+step: render or run each state (selection + X's + path, aiming preview, Red's turn, game over) and
+look at it before calling a rendering change done.
 
 ---
 

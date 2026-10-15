@@ -21,10 +21,11 @@ public final class BoardNode: SKNode {
     private let effectLayer = SKNode()
     private var tankSprites: [TankID: TankSprite] = [:]
 
-    /// Seconds per tile of driving, and the beat each shot takes. One tile always
-    /// costs the same time, so the tank crawls at a constant speed regardless of
-    /// the terrain it is crossing.
-    public var driveDurationPerTile: TimeInterval = 0.10
+    /// How fast each type of tank drives on screen. One tile always costs the
+    /// same time, so a tank crawls at a constant speed whatever terrain it is
+    /// crossing.
+    public var driveSpeed = DriveSpeed()
+    /// The beat each shot takes.
     public var shotDuration: TimeInterval = 0.22
 
     /// Action key for any driving animation, preview or committed.
@@ -246,6 +247,12 @@ public final class BoardNode: SKNode {
 
     static let targetMarkName = "targetMark"
 
+    /// How long the drive the tank is running right now will take in total,
+    /// or nil if it is not driving. For tests.
+    func runningDriveDuration(tankID: TankID) -> TimeInterval? {
+        tankSprites[tankID]?.action(forKey: Self.driveKey)?.duration
+    }
+
     /// Tiles currently carrying a yellow X. For tests.
     func targetMarkTiles() -> [Position] {
         markerLayer.children
@@ -315,7 +322,9 @@ public final class BoardNode: SKNode {
                          then next: @escaping () -> Void) {
         switch event {
         case .moved(let tankID, let path):
-            drive(tankID: tankID, along: path, then: next)
+            let secondsPerTile = state.tank(tankID).map { driveSpeed.secondsPerTile(for: $0.kind) }
+                ?? driveSpeed.light
+            drive(tankID: tankID, along: path, secondsPerTile: secondsPerTile, then: next)
 
         case .resupplied(let tankID):
             resupplyFlash(tankID: tankID, then: next)
@@ -329,7 +338,7 @@ public final class BoardNode: SKNode {
         }
     }
 
-    private func drive(tankID: TankID, along path: [Position],
+    private func drive(tankID: TankID, along path: [Position], secondsPerTile: TimeInterval,
                        then next: @escaping () -> Void) {
         guard let sprite = tankSprites[tankID], let last = path.last, path.count > 1 else {
             return next()
@@ -343,7 +352,7 @@ public final class BoardNode: SKNode {
         }
 
         let steps = path.dropFirst().map { tile in
-            SKAction.move(to: layout.point(for: tile), duration: driveDurationPerTile)
+            SKAction.move(to: layout.point(for: tile), duration: secondsPerTile)
         }
         sprite.run(.sequence(steps + [.run(next)]), withKey: Self.driveKey)
     }
@@ -423,5 +432,29 @@ public final class BoardNode: SKNode {
             .group([.scale(to: 1.8, duration: 0.3), .fadeOut(withDuration: 0.3)]),
             .removeFromParent(),
         ]), completion: next)
+    }
+}
+
+/// Seconds per tile of driving, by tank type. Presentation only: how far a tank
+/// may go is its move points in `GameConfig`; this is how quickly the board
+/// shows it getting there.
+///
+/// The types read by their speed — the light darts, the medium rolls, the
+/// artillery lumbers — and the numbers are picked so that each one's longest
+/// move takes about the same half-second: 5 × 0.10, 3 × 0.16, 2 × 0.24. A
+/// turn never drags because the slowest tank used its full move.
+public struct DriveSpeed: Equatable, Sendable {
+    public var light: TimeInterval = 0.10
+    public var medium: TimeInterval = 0.16
+    public var artillery: TimeInterval = 0.24
+
+    public init() {}
+
+    public func secondsPerTile(for kind: TankKind) -> TimeInterval {
+        switch kind {
+        case .light: return light
+        case .medium: return medium
+        case .artillery: return artillery
+        }
     }
 }

@@ -140,7 +140,9 @@ The scene code is in `TankGameRendering` (not the app target) so it is unit-test
   replaying committed events — anything that makes the scene busy must call `advanceAIIfNeeded()` when
   it finishes, or Red's turn is never scheduled (that was the "Red got stuck" bug).
 - `BoardNode` / `TankSprite` — drawing and event animations. `BoardLayout` converts grid ↔ points
-  (the model's y grows DOWN, SpriteKit's grows UP, so every conversion flips y).
+  (the model's y grows DOWN, SpriteKit's grows UP, so every conversion flips y). `BoardNode.driveSpeed`
+  (`DriveSpeed`) sets seconds per tile by tank type — light 0.10, medium 0.16, artillery 0.24, so each
+  type's full move takes ~0.5s. Presentation only; how far a tank may go is `movePoints` in `GameConfig`.
 - `HUDNode`, `UnitCardNode`, `ButtonNode`, `CommandIcons`, `GameOverNode`, `BoardFrameNode` — the
   chrome, all drawn in code, following `docs/ScreenDesign.png`: operation/turn header, one unit card
   above the field for either side, the sector strip, the status line and the segmented command bar

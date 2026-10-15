@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "tileset_green_grass_bg_92.png",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}
